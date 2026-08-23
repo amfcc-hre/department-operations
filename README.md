@@ -13,10 +13,18 @@ https://amfcc-hre.github.io/amfcc_department_operations/
 ## Access
 
 - HODs and department staff choose their department and use its unique four-digit PIN.
-- Student Leadership uses its existing Student Services password.
-- School Administration uses its existing Admin password.
+- Student Leadership uses its existing four-digit Student Leadership PIN.
+- School Administration uses its existing four-digit Administrator PIN.
 - No individual staff PINs are required.
 - School Administration sets or replaces each department PIN from the Department access tab.
+
+## Student Leadership and School Administration replacement
+
+- The Student services tab replaces the previous Student Leadership and School Administrator dashboards.
+- Student Leadership retains campus status, outing type, accommodation, gate-pass viewing, gate duty, recent movements and exports.
+- Management retains senior gate-pass decisions.
+- School Administration also receives fee status, Administrator gate-pass approval, departure and return amendments, and school settings.
+- Student Leadership cannot see fees or confidential Clinic notes.
 
 ## Department workspaces
 
@@ -34,5 +42,9 @@ https://amfcc-hre.github.io/amfcc_department_operations/
 - Holiday mode exposes Morning and Afternoon task slots.
 - Departments request a total headcount, including their members, and cannot request names.
 - Student Leadership approves or edits the total and assigns 1st year men, 1st year ladies, 2nd year men or 2nd year ladies.
+
+## Conference Mode
+
+Conference Mode is not a calendar mode. It is an overlay on School Term or Holiday Mode. While it is on, meal planning has no deadline, manual-work sessions and group allocations are unavailable, and open or new work is treated as Emergency work with Critical priority. The selected School Term or Holiday gate-pass rules remain active.
 
 The Supabase database migrations are already deployed. Do not run the SQL files again. The Jira outbox worker remains unchanged.

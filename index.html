@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="https://amfcc-hre.github.io/amfcc_student_services/assets_icon.png">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css">
+  <link rel="stylesheet" href="operations.css?v=4.0">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -38,8 +38,8 @@
           </select>
         </div>
 
-        <label for="access-code">4-digit department PIN or leadership password</label>
-        <input id="access-code" type="password" inputmode="numeric" autocomplete="current-password" required>
+        <label for="access-code">4-digit workspace PIN</label>
+        <input id="access-code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
         <button class="button primary wide" type="submit">Open workspace</button>
       </form>
       <p class="privacy-note">Departments share one workspace login. Staff select or enter their name only when recording work. Student names are kept out of Jira.</p>
@@ -75,6 +75,7 @@
       <button type="button" data-view="transfers" data-roles="department,management,administrator">Transfers</button>
       <button type="button" data-view="planner" data-roles="student_leadership,management,administrator">Planner</button>
       <button type="button" data-view="assignments" data-roles="student_leadership,management,administrator">Groups</button>
+      <button type="button" data-view="student-services" data-roles="student_leadership,management,administrator">Student services</button>
       <button type="button" data-view="reports" data-roles="student_leadership,management,administrator">Review reports</button>
       <button type="button" data-view="access" data-roles="administrator">Department access</button>
     </nav>
@@ -310,6 +311,118 @@
       </form>
     </section>
 
+    <section id="view-student-services" class="view" aria-labelledby="student-services-heading">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Replacement workspace</p>
+          <h2 id="student-services-heading">Student services operations</h2>
+          <p class="muted">Campus, accommodation, gate passes, gate duty, movements, exports, and School Administration controls are now inside this login.</p>
+        </div>
+        <button id="ss-refresh" class="button secondary" type="button">Refresh student services</button>
+      </div>
+
+      <div id="ss-summary-cards" class="summary-grid"></div>
+
+      <nav id="student-services-tabs" class="service-tabs" aria-label="Student services sections">
+        <button class="active" data-ss-tab="campus" type="button">Campus</button>
+        <button data-ss-tab="accommodation" type="button">Accommodation</button>
+        <button data-ss-tab="passes" type="button">Gate passes</button>
+        <button data-ss-tab="fees" data-ss-admin-only type="button">Fees</button>
+        <button data-ss-tab="duty" type="button">Gate duty</button>
+        <button data-ss-tab="recent" type="button">Recent movements</button>
+        <button data-ss-tab="exports" type="button">Exports</button>
+        <button data-ss-tab="settings" data-ss-admin-only type="button">Settings</button>
+      </nav>
+
+      <section id="ss-tab-campus" class="student-service-section active panel">
+        <div class="panel-heading"><div><h3>Campus status</h3><p>Student Leadership and School Administration can correct campus status and outing type.</p></div></div>
+        <div class="service-toolbar">
+          <input id="ss-campus-search" type="search" placeholder="Search student or registration">
+          <select id="ss-campus-filter"><option value="ALL">All statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option><option value="BED_REST">Allowed bed rest</option></select>
+          <select id="ss-campus-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+        </div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Status</th><th>Health</th><th>Last movement</th><th>Action</th></tr></thead><tbody id="ss-campus-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-accommodation" class="student-service-section panel">
+        <div class="panel-heading"><div><h3>Accommodation</h3><p>Basic allocation details only for Student Leadership. Fee details appear only for School Administration.</p></div></div>
+        <div class="service-toolbar">
+          <input id="ss-accommodation-search" type="search" placeholder="Search student, residence, or room">
+          <select id="ss-accommodation-filter"><option value="ALL">All allocations</option><option value="ALLOCATED">Allocated</option><option value="NOT_ALLOCATED">Not allocated</option><option value="BED_REST">Allowed bed rest</option></select>
+          <select id="ss-accommodation-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+        </div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Residence</th><th>Room</th><th>Bed</th><th id="ss-accommodation-fees-heading">Fees</th><th>Status</th><th>Action</th></tr></thead><tbody id="ss-accommodation-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-passes" class="student-service-section panel">
+        <div class="panel-heading"><div><h3>Gate passes</h3><p id="ss-pass-permission-note">All people attached to a pass are shown together.</p></div></div>
+        <div class="service-toolbar">
+          <input id="ss-pass-search" type="search" placeholder="Search person, registration, or destination">
+          <select id="ss-pass-filter"><option value="ALL">All pass statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="OVERDUE">Overdue</option></select>
+          <select id="ss-pass-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+        </div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Everyone on pass</th><th>Destination</th><th>Status</th><th>Departure and return</th><th>Action</th></tr></thead><tbody id="ss-pass-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-fees" class="student-service-section panel" data-ss-admin-only>
+        <div class="panel-heading"><div><h3>Student fee status</h3><p>School Administration only.</p></div><label>Fee term<select id="ss-fee-term"></select></label></div>
+        <div id="ss-fee-summary" class="summary-grid compact"></div>
+        <div class="service-toolbar">
+          <input id="ss-fee-search" type="search" placeholder="Search student or registration">
+          <select id="ss-fee-filter"><option value="ALL">All students</option><option value="PAID">Fees paid</option><option value="UNPAID">Fees not paid</option></select>
+          <select id="ss-fee-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+        </div>
+        <div class="callout">Use the status button to mark a verified exception. Every change is recorded in the audit history.</div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Term</th><th>Due date</th><th>Status</th><th>Last updated</th></tr></thead><tbody id="ss-fee-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-duty" class="student-service-section panel">
+        <div class="panel-heading"><div><h3>Gate duty today</h3></div></div>
+        <div class="service-toolbar"><input id="ss-duty-search" type="search" placeholder="Search student or registration"><select id="ss-duty-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Time</th><th>Student</th><th>Registration</th><th>Direction</th><th>Source</th></tr></thead><tbody id="ss-duty-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-recent" class="student-service-section panel">
+        <div class="panel-heading"><div><h3>Recent campus movements</h3></div></div>
+        <div class="service-toolbar"><input id="ss-recent-search" type="search" placeholder="Search student or registration"><select id="ss-recent-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Time</th><th>Student</th><th>Registration</th><th>Movement</th><th>Destination or pass</th></tr></thead><tbody id="ss-recent-rows"></tbody></table></div>
+      </section>
+
+      <section id="ss-tab-exports" class="student-service-section panel">
+        <div class="panel-heading"><div><h3>Student services exports</h3><p>Download CSV files for Excel.</p></div></div>
+        <div class="two-column">
+          <form id="ss-movement-export-form" class="panel form-stack">
+            <h3>Movement status report</h3>
+            <label>Period<select id="ss-movement-period"><option value="current_status">Current status</option><option value="last_24_hours">Last 24 hours</option><option value="last_3_days">Last 3 days</option><option value="past_week">Past week</option></select></label>
+            <label>Class year<select id="ss-movement-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></label>
+            <button class="button primary" type="submit">Download movement CSV</button>
+          </form>
+          <form id="ss-detail-export-form" class="panel form-stack">
+            <h3>Detailed activity export</h3>
+            <label>Report<select id="ss-export-type"><option value="campus">Individual campus movements</option><option value="passes">Gate passes</option><option value="gate_duty">Gate duty</option><option value="meals">Meal attendance</option></select></label>
+            <label>Start date<input id="ss-export-start" type="date"></label>
+            <label>End date<input id="ss-export-end" type="date"></label>
+            <label>Class year<select id="ss-export-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></label>
+            <button class="button primary" type="submit">Download detailed CSV</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="ss-tab-settings" class="student-service-section panel" data-ss-admin-only>
+        <div class="panel-heading"><div><h3>School Administration settings</h3><p>Conference Mode is an overlay, not a standalone calendar mode.</p></div></div>
+        <form id="ss-settings-form" class="form-grid">
+          <label>Recorded by<input id="ss-settings-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+          <label>School calendar<select id="ss-base-mode"><option value="normal">School Term Mode</option><option value="holiday">Holiday Mode</option></select></label>
+          <label class="check-row span-2 conference-check"><input id="ss-conference-mode" type="checkbox"> Add Conference Mode to the selected school calendar</label>
+          <label class="check-row span-2"><input id="ss-pilot-mode" type="checkbox"> Run the electronic gate-pass pilot alongside paper passes</label>
+          <label>Pilot start<input id="ss-pilot-start" type="datetime-local"></label>
+          <label>Pilot end<input id="ss-pilot-end" type="datetime-local"></label>
+          <label>Kiosk result duration in seconds<input id="ss-result-seconds" type="number" min="1" max="10" step="0.1" required></label>
+          <div class="form-actions span-2"><button class="button primary" type="submit">Save Administrator settings</button></div>
+        </form>
+      </section>
+    </section>
+
     <section id="view-reports" class="view" aria-labelledby="reports-heading">
       <div class="view-heading"><div><p class="eyebrow">Verification and approval</p><h2 id="reports-heading">Department reports</h2></div></div>
       <div class="filter-row"><label>Status<select id="report-review-filter"><option value="review">Needs review</option><option value="all">All</option><option value="approved">Approved / locked</option></select></label><label>Reviewed by<input id="reviewer-name" list="staff-name-options" placeholder="Select or type your name"></label></div>
@@ -341,6 +454,43 @@
       </article>
     </section>
 
+    <div id="ss-student-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ss-student-modal-title">
+      <form id="ss-student-form" class="ops-modal-card form-grid">
+        <button id="ss-student-close" class="modal-close-button" type="button" aria-label="Close">×</button>
+        <div class="span-2"><p class="eyebrow">Student operations</p><h2 id="ss-student-modal-title">Edit student</h2><div id="ss-student-summary" class="callout"></div></div>
+        <label>Campus status<select id="ss-edit-campus-status"><option value="IN">On campus</option><option value="OUT">Off campus</option></select></label>
+        <label>Outing type<select id="ss-edit-outing-type"><option value="">Not specified</option><option value="gate_pass">Gate pass</option><option value="tanaka">Tanaka or Amalinda Shops</option><option value="mdh">MDH</option><option value="town_other">Town or other</option><option value="holiday">Holiday</option></select></label>
+        <label class="span-2">Reason or note<textarea id="ss-edit-campus-note" rows="2"></textarea></label>
+        <label>Residence<input id="ss-edit-residence"></label>
+        <label>Room<input id="ss-edit-room"></label>
+        <label>Bed<input id="ss-edit-bed"></label>
+        <label>Accommodation status<select id="ss-edit-accommodation-status"><option value="waiting">Waiting</option><option value="allocated">Allocated</option><option value="checked_in">Checked in</option><option value="checked_out">Checked out</option></select></label>
+        <label class="check-row span-2"><input id="ss-remove-accommodation" type="checkbox"> Remove current accommodation allocation</label>
+        <div class="form-actions span-2"><button id="ss-student-save" class="button primary" type="submit">Save changes</button><button id="ss-student-cancel" class="button quiet" type="button">Cancel</button></div>
+      </form>
+    </div>
+
+    <div id="ss-pass-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ss-pass-modal-title">
+      <div class="ops-modal-card">
+        <button id="ss-pass-close" class="modal-close-button" type="button" aria-label="Close">×</button>
+        <p class="eyebrow">Gate pass</p><h2 id="ss-pass-modal-title">Pass details</h2>
+        <div id="ss-pass-details"></div>
+        <div id="ss-admin-schedule" class="form-grid" hidden>
+          <label>Departure<input id="ss-pass-departure" type="datetime-local"></label>
+          <label>Expected return<input id="ss-pass-return" type="datetime-local"></label>
+          <button id="ss-save-pass-times" class="button secondary span-2" type="button">Save time changes only</button>
+        </div>
+        <label id="ss-senior-role-field" hidden>Senior staff role<select id="ss-senior-role"><option value="">Choose role</option><option value="principal">Principal</option><option value="dean">Dean</option><option value="director">Director</option></select></label>
+        <label id="ss-pass-comments-field" hidden>Comments or reason<textarea id="ss-pass-comments" rows="3"></textarea></label>
+        <div id="ss-pass-actions" class="card-actions" hidden>
+          <button class="button primary ss-pass-decision" data-decision="approved" type="button">Approve</button>
+          <button class="button danger ss-pass-decision" data-decision="rejected" type="button">Reject</button>
+          <button class="button quiet ss-pass-decision" data-decision="cancelled" type="button">Cancel pass</button>
+        </div>
+        <div id="ss-pass-view-only" class="callout">View only. Approval decisions are made by School Administration or authorised senior staff.</div>
+      </div>
+    </div>
+
     <datalist id="staff-name-options"></datalist>
   </div>
 
@@ -357,6 +507,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js"></script>
+  <script src="operations.js?v=4.0"></script>
 </body>
 </html>

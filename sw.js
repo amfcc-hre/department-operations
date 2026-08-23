@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v3';
+const CACHE='amfcc-department-operations-v4-combined-dashboard';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './shared_ui.css','./shared_config.js','./operations.css','./operations.js'

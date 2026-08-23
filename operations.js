@@ -9,6 +9,10 @@
     groups: { groups: [], allocations: [], holiday_mode: false },
     mode: { mode: "normal", conference_mode: false, holiday_mode: false },
     tools: null,
+    studentServices: null,
+    studentTermId: null,
+    studentEdit: null,
+    passReview: null,
     periodPreview: null,
     toastTimer: null,
     clinicTimer: null
@@ -62,7 +66,7 @@
   function isDepartment() { return state.session && state.session.role === "department"; }
   function isLeadership() { return state.session && state.session.role === "student_leadership"; }
   function isManagement() { return state.session && ["management", "administrator"].indexOf(state.session.role) >= 0; }
-  function isConference() { return state.mode && state.mode.mode === "conference"; }
+  function isConference() { return !!(state.mode && state.mode.conference_mode); }
 
   function toast(message, isError) {
     var box = el("toast");
@@ -164,6 +168,7 @@
     });
     all(".admin-department-field").forEach(function (node) { node.hidden = role === "department"; });
     all(".department-entry").forEach(function (node) { node.hidden = role === "student_leadership"; });
+    all("[data-ss-admin-only]").forEach(function (node) { node.hidden = role !== "administrator"; });
     var active = el("main-nav").querySelector("button.active");
     applyOperatingModeVisibility();
     if (active && active.hidden) switchView(isConference() ? "tasks" : "overview");
@@ -180,11 +185,11 @@
     });
     el("overview-session-panel").hidden = conference;
     var banner = el("operating-mode-banner");
-    banner.hidden = state.mode.mode === "normal";
-    banner.className = "operating-mode-banner " + state.mode.mode;
-    el("operating-mode-title").textContent = state.mode.label || titleCase(state.mode.mode) + " Mode";
+    banner.hidden = state.mode.mode === "normal" && !conference;
+    banner.className = "operating-mode-banner " + (conference ? "conference" : state.mode.mode);
+    el("operating-mode-title").textContent = state.mode.combined_label || state.mode.label || titleCase(state.mode.mode) + " Mode";
     el("operating-mode-message").textContent = conference
-      ? "No manual-work sessions are available. Record every piece of work as an Emergency task."
+      ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions and meal deadlines. Record every piece of work as an Emergency task."
       : "Morning and Afternoon task sessions are available during Holiday Mode.";
     if (conference) {
       el("task-type").value = "emergency";
@@ -205,6 +210,9 @@
     }
     state.session = null;
     state.data = null;
+    state.studentServices = null;
+    state.studentEdit = null;
+    state.passReview = null;
     sessionStorage.removeItem("amfcc_ops_session");
     showLogin();
   }
@@ -228,6 +236,8 @@
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
     });
     if (isDepartment()) await loadDepartmentTools(currentDepartmentId());
+    if (!isDepartment()) await loadStudentServices();
+    else state.studentServices = null;
     renderAll();
     if (showMessage) toast("Workspace refreshed.");
   }
@@ -555,6 +565,431 @@
     URL.revokeObjectURL(link.href);
   }
 
+  function formatDateTime(input) {
+    if (!input) return "Not recorded";
+    var d = new Date(input);
+    return isNaN(d.getTime()) ? String(input) : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  function datetimeLocal(input) {
+    if (!input) return "";
+    var d = new Date(input);
+    if (isNaN(d.getTime())) return "";
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+
+  function studentBridgePin() {
+    return state.session && state.session.session_token ? "ops:" + state.session.session_token : "";
+  }
+
+  function serviceAcademicYear() {
+    return Number(state.studentServices && state.studentServices.current_academic_year) || new Date().getFullYear();
+  }
+
+  function serviceYearNumber(registrationNumber) {
+    var digits = String(registrationNumber == null ? "" : registrationNumber).replace(/\D/g, "");
+    if (digits.length < 2) return null;
+    var intake = 2000 + Number(digits.slice(0, 2));
+    var year = serviceAcademicYear() - intake + 1;
+    return year > 0 && year < 10 ? year : null;
+  }
+
+  function serviceYearLabel(registrationNumber) {
+    var year = serviceYearNumber(registrationNumber);
+    if (!year) return "Year unknown";
+    var suffix = year % 10 === 1 && year % 100 !== 11 ? "st" : year % 10 === 2 && year % 100 !== 12 ? "nd" : year % 10 === 3 && year % 100 !== 13 ? "rd" : "th";
+    return year + suffix + " Year";
+  }
+
+  function serviceYearMatches(registrationNumber, filter) {
+    return !filter || filter === "ALL" || String(serviceYearNumber(registrationNumber)) === String(filter);
+  }
+
+  function serviceStudentName(student) {
+    return '<span class="service-person"><strong>' + escapeHtml(student.student_name) + '</strong><small>' + escapeHtml(serviceYearLabel(student.registration_number)) + '</small></span>';
+  }
+
+  function servicePassPeople(pass) {
+    var people = Array.isArray(pass.people) && pass.people.length ? pass.people : [{ student_name: pass.student_name, registration_number: pass.registration_number, is_primary: true }];
+    return people.filter(function (person) { return person && person.student_name; });
+  }
+
+  function servicePeopleHtml(pass) {
+    return '<div class="service-people">' + servicePassPeople(pass).map(function (person) {
+      return '<span class="service-person"><strong>' + escapeHtml(person.student_name) + (person.is_primary ? ' <small>Applicant</small>' : '') + '</strong><small>' + escapeHtml(person.registration_number) + ' · ' + escapeHtml(serviceYearLabel(person.registration_number)) + '</small></span>';
+    }).join("") + "</div>";
+  }
+
+  function serviceStudentByRegistration(registrationNumber) {
+    return (state.studentServices && state.studentServices.students || []).find(function (student) {
+      return String(student.registration_number) === String(registrationNumber);
+    });
+  }
+
+  async function loadStudentServices() {
+    if (!state.session || isDepartment()) return;
+    var bridge = studentBridgePin();
+    var result;
+    if (state.session.role === "administrator") {
+      result = await rpc("admin_services_dashboard_v2", {
+        p_pin: bridge,
+        p_term_id: state.studentTermId ? Number(state.studentTermId) : null
+      });
+    } else {
+      result = await rpc("student_services_dashboard_v3", { p_pin: bridge });
+    }
+    if (!result || result.status !== "success") throw new Error(result && result.message || "Student services could not be loaded.");
+    state.studentServices = result;
+    if (result.selected_term && result.selected_term.id != null) state.studentTermId = String(result.selected_term.id);
+  }
+
+  function activateStudentServicesTab(tab) {
+    var target = el("ss-tab-" + tab);
+    if (!target || target.hidden) tab = "campus";
+    all("[data-ss-tab]", el("student-services-tabs")).forEach(function (button) {
+      button.classList.toggle("active", button.dataset.ssTab === tab);
+    });
+    all(".student-service-section", el("view-student-services")).forEach(function (section) {
+      section.classList.toggle("active", section.id === "ss-tab-" + tab);
+    });
+  }
+
+  function configureStudentServiceVisibility() {
+    var admin = state.session.role === "administrator";
+    all("[data-ss-admin-only]").forEach(function (node) { node.hidden = !admin; });
+    el("ss-accommodation-fees-heading").hidden = !admin;
+    all("#student-services-tabs option[value='3'], #view-student-services option[value='3']").forEach(function (option) {
+      option.hidden = isLeadership();
+      option.disabled = isLeadership();
+      if (isLeadership() && option.parentElement.value === "3") option.parentElement.value = "ALL";
+    });
+    var active = el("student-services-tabs").querySelector("button.active");
+    if (active && active.hidden) activateStudentServicesTab("campus");
+  }
+
+  function renderStudentServiceSummary() {
+    var data = state.studentServices || {}, counts = data.counts || {};
+    var cards = [
+      [counts.on_campus || 0, "On campus", false],
+      [counts.off_campus || 0, "Off campus", false],
+      [counts.bed_rest || 0, "Allowed bed rest", false],
+      [counts.pending_passes || 0, "Pending passes", Number(counts.pending_passes || 0) > 0],
+      [counts.overdue_passes || 0, "Overdue passes", Number(counts.overdue_passes || 0) > 0]
+    ];
+    if (state.session.role === "administrator") cards.push([(data.fee_summary || {}).unpaid || 0, "Fees not paid", Number((data.fee_summary || {}).unpaid || 0) > 0]);
+    el("ss-summary-cards").innerHTML = cards.map(function (card) {
+      return '<article class="summary-card' + (card[2] ? " alert" : "") + '"><div class="label">' + escapeHtml(card[1]) + '</div><div class="value">' + escapeHtml(card[0]) + "</div></article>";
+    }).join("");
+  }
+
+  function renderStudentCampus() {
+    var data = state.studentServices || {}, q = value("ss-campus-search").toLowerCase(), filter = value("ss-campus-filter"), year = value("ss-campus-year");
+    var rows = (data.students || []).filter(function (student) {
+      var statusMatch = filter === "ALL" || filter === student.status || filter === "BED_REST" && student.bed_rest;
+      return statusMatch && serviceYearMatches(student.registration_number, year) && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
+    });
+    el("ss-campus-rows").innerHTML = rows.length ? rows.map(function (student) {
+      var health = [];
+      if (student.bed_rest) health.push('<span class="service-pill bed-rest">Allowed bed rest</span>');
+      if (state.session.role === "administrator" && student.maternity) health.push('<span class="service-pill bed-rest">Maternity</span>');
+      return '<tr><td>' + serviceStudentName(student) + '</td><td>' + escapeHtml(student.registration_number) + '</td><td><span class="service-pill ' + escapeHtml(student.status) + '">' + escapeHtml(student.status === "IN" ? "On campus" : student.status === "OUT" ? "Off campus" : "Unknown") + '</span></td><td>' + (health.join(" ") || '<span class="service-secondary">None</span>') + '</td><td>' + escapeHtml(formatDateTime(student.last_movement_at)) + '</td><td><button class="button quiet ss-edit-student" data-registration="' + escapeHtml(student.registration_number) + '" type="button">Edit</button></td></tr>';
+    }).join("") : '<tr><td colspan="6" class="empty-state">No matching students.</td></tr>';
+  }
+
+  function renderStudentAccommodation() {
+    var data = state.studentServices || {}, admin = state.session.role === "administrator", q = value("ss-accommodation-search").toLowerCase(), filter = value("ss-accommodation-filter"), year = value("ss-accommodation-year");
+    var rows = (data.students || []).filter(function (student) {
+      var statusMatch = filter === "ALL" || filter === "ALLOCATED" && student.residence || filter === "NOT_ALLOCATED" && !student.residence || filter === "BED_REST" && student.bed_rest;
+      var hay = [student.student_name, student.registration_number, student.residence, student.room].join(" ").toLowerCase();
+      return statusMatch && serviceYearMatches(student.registration_number, year) && hay.indexOf(q) >= 0;
+    });
+    el("ss-accommodation-rows").innerHTML = rows.length ? rows.map(function (student) {
+      var feeCell = admin ? '<td><span class="service-pill ' + (student.fees_paid === false ? "unpaid" : "paid") + '">' + (student.fees_paid === false ? "Not paid" : "Paid") + "</span></td>" : "";
+      return '<tr><td>' + serviceStudentName(student) + '</td><td>' + escapeHtml(student.registration_number) + '</td><td>' + escapeHtml(student.residence || "Not allocated") + '</td><td>' + escapeHtml(student.room || "—") + '</td><td>' + escapeHtml(student.bed || "—") + '</td>' + feeCell + '<td>' + escapeHtml(titleCase(student.accommodation_status || "Not allocated")) + '</td><td><button class="button quiet ss-edit-student" data-registration="' + escapeHtml(student.registration_number) + '" type="button">Edit</button></td></tr>';
+    }).join("") : '<tr><td colspan="8" class="empty-state">No matching accommodation records.</td></tr>';
+  }
+
+  function renderStudentPasses() {
+    var data = state.studentServices || {}, q = value("ss-pass-search").toLowerCase(), filter = value("ss-pass-filter"), year = value("ss-pass-year");
+    var rows = (data.gate_passes || []).filter(function (pass) {
+      var statusMatch = filter === "ALL" || filter === "OVERDUE" && pass.overdue || pass.status === filter;
+      var people = servicePassPeople(pass);
+      var yearMatch = year === "ALL" || people.some(function (person) { return serviceYearMatches(person.registration_number, year); });
+      var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
+      return statusMatch && yearMatch && hay.toLowerCase().indexOf(q) >= 0;
+    });
+    el("ss-pass-permission-note").textContent = isLeadership() ? "Student Leadership can view all people and decisions on a pass. Approval remains view only." : state.session.role === "administrator" ? "School Administration can amend departure and return times and make the Administrator decision." : "Management can record a Principal, Dean, or Director decision.";
+    el("ss-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
+      var status = pass.overdue ? "overdue" : pass.status;
+      return '<tr class="' + (pass.overdue ? "service-row-overdue" : "") + '"><td>' + servicePeopleHtml(pass) + '</td><td>' + escapeHtml(pass.destination) + '</td><td><span class="service-pill ' + escapeHtml(status) + '">' + escapeHtml(pass.overdue ? "Overdue" : titleCase(pass.status)) + '</span>' + (pass.waiting_on ? '<br><small class="service-secondary">Waiting on ' + escapeHtml(pass.waiting_on) + "</small>" : "") + '</td><td>' + escapeHtml(formatDateTime(pass.departure_at)) + '<br><small class="service-secondary">Return ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</small></td><td><button class="button secondary ss-open-pass" data-id="' + escapeHtml(pass.id) + '" type="button">' + (isLeadership() ? "View" : "Review") + "</button></td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty-state">No matching gate passes.</td></tr>';
+  }
+
+  function renderStudentFees() {
+    if (state.session.role !== "administrator") return;
+    var data = state.studentServices || {}, selected = data.selected_term || {}, terms = data.terms || [];
+    var termSelect = el("ss-fee-term"), previous = state.studentTermId || String(selected.id || "");
+    termSelect.innerHTML = terms.map(function (term) { return '<option value="' + escapeHtml(term.id) + '">' + escapeHtml(term.term_name + " · " + term.academic_year) + "</option>"; }).join("");
+    if (previous) termSelect.value = previous;
+    var summary = data.fee_summary || {};
+    el("ss-fee-summary").innerHTML = [[summary.paid || 0,"Paid",false],[summary.unpaid || 0,"Not paid",Number(summary.unpaid || 0)>0],[summary.total || 0,"Students",false]].map(function (card) {
+      return '<article class="summary-card' + (card[2] ? " alert" : "") + '"><div class="label">' + card[1] + '</div><div class="value">' + card[0] + "</div></article>";
+    }).join("");
+    var q = value("ss-fee-search").toLowerCase(), filter = value("ss-fee-filter"), year = value("ss-fee-year");
+    var rows = (data.students || []).filter(function (student) {
+      var statusMatch = filter === "ALL" || filter === "PAID" && student.fees_paid !== false || filter === "UNPAID" && student.fees_paid === false;
+      return statusMatch && serviceYearMatches(student.registration_number, year) && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
+    });
+    el("ss-fee-rows").innerHTML = rows.length ? rows.map(function (student) {
+      var paid = student.fees_paid !== false;
+      return '<tr><td>' + serviceStudentName(student) + '</td><td>' + escapeHtml(student.registration_number) + '</td><td>' + escapeHtml(selected.term_name || "Current term") + '</td><td>' + escapeHtml(formatDate(selected.fees_due_date)) + '</td><td><button class="button ' + (paid ? "secondary" : "danger") + ' ss-fee-toggle" data-registration="' + escapeHtml(student.registration_number) + '" data-paid="' + paid + '" type="button">' + (paid ? "Paid" : "Not paid") + '</button></td><td>' + escapeHtml(formatDateTime(student.fee_updated_at)) + "</td></tr>";
+    }).join("") : '<tr><td colspan="6" class="empty-state">No matching fee records.</td></tr>';
+  }
+
+  function renderStudentDuty() {
+    var data = state.studentServices || {}, q = value("ss-duty-search").toLowerCase(), year = value("ss-duty-year");
+    var rows = (data.gate_duty_today || []).filter(function (row) { return serviceYearMatches(row.registration_number, year) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
+    el("ss-duty-rows").innerHTML = rows.length ? rows.map(function (row) {
+      return '<tr><td>' + escapeHtml(formatDateTime(row.scanned_at)) + '</td><td>' + serviceStudentName(row) + '</td><td>' + escapeHtml(row.registration_number) + '</td><td><span class="service-pill ' + escapeHtml(row.direction) + '">' + escapeHtml(row.direction) + '</span></td><td>' + escapeHtml(row.source || row.record_source || "Recorded") + "</td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty-state">No gate-duty records today.</td></tr>';
+  }
+
+  function renderStudentRecent() {
+    var data = state.studentServices || {}, q = value("ss-recent-search").toLowerCase(), year = value("ss-recent-year");
+    var rows = (data.recent_movements || []).filter(function (row) { return serviceYearMatches(row.registration_number, year) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
+    el("ss-recent-rows").innerHTML = rows.length ? rows.map(function (row) {
+      return '<tr><td>' + escapeHtml(formatDateTime(row.scanned_at)) + '</td><td>' + serviceStudentName(row) + '</td><td>' + escapeHtml(row.registration_number) + '</td><td><span class="service-pill ' + escapeHtml(row.direction) + '">' + escapeHtml(row.direction) + '</span></td><td>' + escapeHtml(row.gate_pass_id ? "Approved pass" : row.checkout_destination_label || "Not linked") + "</td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty-state">No recent campus movements.</td></tr>';
+  }
+
+  function renderStudentSettings() {
+    if (state.session.role !== "administrator") return;
+    var settings = state.studentServices && state.studentServices.settings || {};
+    el("ss-base-mode").value = state.mode.base_mode || state.mode.mode || "normal";
+    el("ss-conference-mode").checked = !!state.mode.conference_mode;
+    el("ss-pilot-mode").checked = !!settings.gate_pass_pilot_mode;
+    el("ss-pilot-start").value = datetimeLocal(settings.gate_pass_pilot_started_at);
+    el("ss-pilot-end").value = datetimeLocal(settings.gate_pass_pilot_ends_at);
+    el("ss-result-seconds").value = settings.gate_terminal_result_seconds == null ? 3 : settings.gate_terminal_result_seconds;
+    el("ss-settings-actor").value = localStorage.getItem("amfcc_ops_admin_actor") || el("ss-settings-actor").value;
+  }
+
+  function renderStudentServices() {
+    if (!state.studentServices || isDepartment()) return;
+    configureStudentServiceVisibility();
+    renderStudentServiceSummary();
+    renderStudentCampus();
+    renderStudentAccommodation();
+    renderStudentPasses();
+    renderStudentFees();
+    renderStudentDuty();
+    renderStudentRecent();
+    renderStudentSettings();
+  }
+
+  function toggleStudentEditFields() {
+    var offCampus = value("ss-edit-campus-status") === "OUT";
+    el("ss-edit-outing-type").disabled = !offCampus;
+    if (!offCampus) el("ss-edit-outing-type").value = "";
+    var remove = el("ss-remove-accommodation").checked;
+    ["ss-edit-residence","ss-edit-room","ss-edit-bed","ss-edit-accommodation-status"].forEach(function (id) { el(id).disabled = remove; });
+  }
+
+  function openStudentServiceEdit(registrationNumber) {
+    var student = serviceStudentByRegistration(registrationNumber);
+    if (!student) return toast("Student not found. Refresh and try again.", true);
+    state.studentEdit = Object.assign({}, student);
+    el("ss-student-summary").innerHTML = '<strong>' + escapeHtml(student.student_name) + '</strong><br>' + escapeHtml(student.registration_number) + ' · ' + escapeHtml(serviceYearLabel(student.registration_number));
+    el("ss-edit-campus-status").value = student.status === "OUT" ? "OUT" : "IN";
+    el("ss-edit-outing-type").value = student.outing_type || "";
+    el("ss-edit-campus-note").value = "";
+    el("ss-edit-residence").value = student.residence || "";
+    el("ss-edit-room").value = student.room || "";
+    el("ss-edit-bed").value = student.bed || "";
+    el("ss-edit-accommodation-status").value = ["waiting","allocated","checked_in","checked_out"].indexOf(student.accommodation_status) >= 0 ? student.accommodation_status : "allocated";
+    el("ss-remove-accommodation").checked = false;
+    toggleStudentEditFields();
+    el("ss-student-modal").hidden = false;
+  }
+
+  function closeStudentServiceEdit() {
+    state.studentEdit = null;
+    el("ss-student-modal").hidden = true;
+  }
+
+  async function saveStudentServiceEdit(form) {
+    var original = state.studentEdit;
+    if (!original) return;
+    var status = value("ss-edit-campus-status"), outing = status === "OUT" ? value("ss-edit-outing-type") : "";
+    var campusChanged = status !== original.status || status === "OUT" && outing !== (original.outing_type || "");
+    var remove = el("ss-remove-accommodation").checked;
+    var residence = value("ss-edit-residence"), room = value("ss-edit-room"), bed = value("ss-edit-bed"), accommodationStatus = value("ss-edit-accommodation-status");
+    var accommodationChanged = remove || residence !== (original.residence || "") || room !== (original.room || "") || bed !== (original.bed || "") || accommodationStatus !== (original.accommodation_status || "allocated");
+    if (!campusChanged && !accommodationChanged) throw new Error("Change the campus status, outing type, or accommodation before saving.");
+    setBusy(form, true, "Saving...");
+    try {
+      if (campusChanged) {
+        var result = await rpc("dashboard_update_student_campus_status_v2", { p_pin: studentBridgePin(), p_registration_number: String(original.registration_number), p_direction: status, p_outing_type: outing || null, p_note: value("ss-edit-campus-note") || null });
+        if (["success","same_status"].indexOf(result.status) < 0) throw new Error(result.message || "Campus status was not saved.");
+      }
+      if (accommodationChanged) {
+        var accommodation = await rpc("dashboard_update_student_accommodation", { p_pin: studentBridgePin(), p_registration_number: String(original.registration_number), p_residence: residence, p_room: room || null, p_bed: bed || null, p_allocation_status: accommodationStatus, p_remove: remove });
+        if (accommodation.status !== "success") throw new Error(accommodation.message || "Accommodation was not saved.");
+      }
+      closeStudentServiceEdit();
+      await loadStudentServices();
+      renderStudentServices();
+      toast("Student operations updated.");
+    } finally { setBusy(form, false); }
+  }
+
+  function localPassDetails(pass) {
+    var people = servicePassPeople(pass);
+    var approvals = (pass.approvals || []).map(function (approval) {
+      return '<div class="approval-review-row"><strong>' + escapeHtml(titleCase(approval.role === "administrator" ? "School Administrator" : approval.role)) + '</strong><br><span class="service-secondary">' + escapeHtml(titleCase(approval.decision)) + ' · ' + escapeHtml(formatDateTime(approval.decided_at)) + "</span></div>";
+    }).join("") || '<p class="service-secondary">No decisions yet.</p>';
+    return '<p><strong>Applicant:</strong> ' + escapeHtml(pass.student_name) + ' (' + escapeHtml(pass.registration_number) + ')</p><h3>Everyone on this pass</h3><ul class="pass-review-list">' + people.map(function (person) { return '<li><strong>' + escapeHtml(person.student_name) + '</strong> (' + escapeHtml(person.registration_number) + ')' + (person.is_primary ? " · Applicant" : "") + "</li>"; }).join("") + '</ul><p><strong>Destination:</strong> ' + escapeHtml(pass.destination) + '</p><p><strong>Reason:</strong> ' + escapeHtml(pass.reason) + '</p>' + (pass.contact_details ? '<p><strong>Contact:</strong> ' + escapeHtml(pass.contact_details) + "</p>" : "") + '<p><strong>Status:</strong> ' + escapeHtml(titleCase(pass.status)) + '</p><h3>Decisions</h3>' + approvals;
+  }
+
+  async function openStudentPass(passId) {
+    var admin = state.session.role === "administrator";
+    var result = await rpc(admin ? "admin_gate_pass_review_details" : "dashboard_gate_pass_review_details", { p_pin: studentBridgePin(), p_pass_id: passId });
+    if (!result || result.status !== "success") throw new Error(result && result.message || "Pass details could not be opened.");
+    state.passReview = result.pass;
+    el("ss-pass-details").innerHTML = localPassDetails(result.pass);
+    el("ss-admin-schedule").hidden = !admin;
+    el("ss-senior-role-field").hidden = admin || !result.can_decide;
+    el("ss-pass-comments-field").hidden = !(admin || result.can_decide);
+    el("ss-pass-actions").hidden = !(admin || result.can_decide);
+    el("ss-pass-view-only").hidden = admin || result.can_decide;
+    el("ss-pass-comments").value = "";
+    el("ss-senior-role").value = "";
+    if (admin) {
+      el("ss-pass-departure").value = datetimeLocal(result.pass.departure_at);
+      el("ss-pass-return").value = datetimeLocal(result.pass.expected_return_at);
+    }
+    el("ss-pass-modal").hidden = false;
+  }
+
+  function closeStudentPass() {
+    state.passReview = null;
+    el("ss-pass-modal").hidden = true;
+  }
+
+  async function saveStudentPassDecision(decision) {
+    if (!state.passReview) return;
+    var comments = value("ss-pass-comments"), admin = state.session.role === "administrator", result;
+    if (["rejected","cancelled"].indexOf(decision) >= 0 && comments.length < 2) throw new Error("Add a reason for rejecting or cancelling the pass.");
+    if (admin) {
+      if (!value("ss-pass-departure") || !value("ss-pass-return")) throw new Error("Enter both departure and expected return times.");
+      result = await rpc("admin_review_gate_pass", {
+        p_pin: studentBridgePin(), p_pass_id: state.passReview.id,
+        p_departure_at: new Date(value("ss-pass-departure")).toISOString(),
+        p_expected_return_at: new Date(value("ss-pass-return")).toISOString(),
+        p_decision: decision, p_comments: comments || null
+      });
+    } else {
+      if (!value("ss-senior-role")) throw new Error("Choose Principal, Dean, or Director.");
+      result = await rpc("dashboard_gate_pass_decision", { p_pin: studentBridgePin(), p_pass_id: state.passReview.id, p_actor_role: value("ss-senior-role"), p_decision: decision, p_comments: comments || null });
+    }
+    if (result.status !== "success") throw new Error(result.message || "The gate-pass decision was not saved.");
+    closeStudentPass();
+    await loadStudentServices();
+    renderStudentServices();
+    toast("Gate pass updated.");
+  }
+
+  async function saveStudentPassTimes(button) {
+    if (!state.passReview || state.session.role !== "administrator") return;
+    setBusy(button, true, "Saving...");
+    try {
+      var result = await rpc("admin_review_gate_pass", {
+        p_pin: studentBridgePin(), p_pass_id: state.passReview.id,
+        p_departure_at: new Date(value("ss-pass-departure")).toISOString(),
+        p_expected_return_at: new Date(value("ss-pass-return")).toISOString(),
+        p_decision: null, p_comments: value("ss-pass-comments") || null
+      });
+      if (result.status !== "success") throw new Error(result.message || "The pass times were not saved.");
+      closeStudentPass();
+      await loadStudentServices();
+      renderStudentServices();
+      toast("Departure and return times updated.");
+    } finally { setBusy(button, false); }
+  }
+
+  async function exportStudentMovements(form) {
+    setBusy(form, true, "Preparing...");
+    try {
+      var period = value("ss-movement-period"), year = value("ss-movement-year");
+      var result = await rpc("student_movements_export_v2", { p_pin: studentBridgePin(), p_period: period });
+      if (result.status !== "success") throw new Error(result.message || "Movement export failed.");
+      var rows = (result.rows || []).filter(function (row) { return serviceYearMatches(row.registration_number, year); }).map(function (row) {
+        return {
+          "Report Period": result.period_label,
+          "Registration Number": row.registration_number,
+          "Student Name": row.student_name,
+          "Class Year": serviceYearLabel(row.registration_number),
+          "Current Campus Status": row.current_campus_status,
+          "On Campus": row.on_campus,
+          "Allowed Bed Rest": row.on_bed_rest,
+          "On Gate Pass": row.on_gate_pass,
+          "Gate Pass Status": row.gate_pass_status,
+          "Gate Pass Destination": row.gate_pass_destination,
+          "Expected Return": row.gate_pass_expected_return_at ? formatDateTime(row.gate_pass_expected_return_at) : "",
+          "Latest Movement": row.latest_movement_at ? formatDateTime(row.latest_movement_at) : "",
+          "Latest Direction": row.latest_movement_direction || "",
+          "Movements in Period": row.movements_in_period == null ? "" : row.movements_in_period,
+          "Residence": row.residence || "",
+          "Room": row.room || "",
+          "Bed": row.bed || ""
+        };
+      });
+      downloadCsv(rows, "student-movements-" + period + "-" + (year === "ALL" ? "all-years" : "year-" + year) + "-" + today() + ".csv");
+      toast("Movement report downloaded.");
+    } finally { setBusy(form, false); }
+  }
+
+  async function exportStudentDetail(form) {
+    setBusy(form, true, "Preparing...");
+    try {
+      var type = value("ss-export-type"), year = value("ss-export-year");
+      var result = await rpc("student_services_export", { p_pin: studentBridgePin(), p_report: type, p_start_date: value("ss-export-start") || null, p_end_date: value("ss-export-end") || null });
+      if (result.status !== "success") throw new Error(result.message || "Detailed export failed.");
+      var rows = (result.rows || []).filter(function (row) { return serviceYearMatches(row.registration_number, year); }).map(function (row) {
+        var output = { "Class Year": serviceYearLabel(row.registration_number) };
+        Object.keys(row).forEach(function (key) { output[titleCase(key)] = row[key]; });
+        return output;
+      });
+      downloadCsv(rows, type + "-" + (year === "ALL" ? "all-years" : "year-" + year) + "-" + today() + ".csv");
+      toast("Detailed report downloaded.");
+    } finally { setBusy(form, false); }
+  }
+
+  async function saveStudentServiceSettings(form) {
+    setBusy(form, true, "Saving...");
+    try {
+      var actor = value("ss-settings-actor");
+      if (!actor) throw new Error("Select or enter your name for the audit record.");
+      localStorage.setItem("amfcc_ops_admin_actor", actor);
+      var result = await rpc("system_control_set_mode", { p_session_token: state.session.session_token, p_mode: value("ss-base-mode"), p_actor_name: actor });
+      if (result.status !== "success") throw new Error(result.message || "School calendar mode was not saved.");
+      result = await rpc("system_control_set_conference", { p_session_token: state.session.session_token, p_enabled: el("ss-conference-mode").checked, p_actor_name: actor });
+      if (result.status !== "success") throw new Error(result.message || "Conference Mode was not saved.");
+      var settings = [
+        ["gate_pass_pilot_mode", el("ss-pilot-mode").checked],
+        ["gate_pass_pilot_started_at", value("ss-pilot-start") ? new Date(value("ss-pilot-start")).toISOString() : null],
+        ["gate_pass_pilot_ends_at", value("ss-pilot-end") ? new Date(value("ss-pilot-end")).toISOString() : null],
+        ["gate_terminal_result_seconds", Number(value("ss-result-seconds"))]
+      ];
+      for (var i = 0; i < settings.length; i++) {
+        result = await rpc("system_control_update_setting", { p_session_token: state.session.session_token, p_setting_key: settings[i][0], p_setting_value: settings[i][1], p_actor_name: actor });
+        if (result.status !== "success") throw new Error(result.message || "An Administrator setting was not saved.");
+      }
+      await loadData(false);
+      toast("Administrator settings saved.");
+    } finally { setBusy(form, false); }
+  }
+
   function renderAccess() {
     if (state.session.role !== "administrator") return;
     var departments = (state.data.departments || []).filter(function (d) { return d.workspace_enabled; });
@@ -583,6 +1018,7 @@
     renderReports();
     renderTransfers();
     renderTools();
+    renderStudentServices();
     renderAccess();
     loadDailyReport();
   }
@@ -593,7 +1029,6 @@
     if (view === "tools" && selectedToolsDepartmentId() && (!state.tools || state.tools.department_id !== selectedToolsDepartmentId())) {
       loadDepartmentTools(selectedToolsDepartmentId()).then(renderTools).catch(function (error) { toast(error.message, true); });
     }
-    window.scrollTo(0, 0);
   }
 
   function resetTaskForm() {
@@ -749,9 +1184,9 @@
       var department = value("access-type") === "department";
       el("department-login-field").hidden = !department;
       el("login-department").required = department;
-      el("access-code").inputMode = department ? "numeric" : "text";
-      el("access-code").maxLength = department ? 4 : 64;
-      el("access-code").pattern = department ? "[0-9]{4}" : "";
+      el("access-code").inputMode = "numeric";
+      el("access-code").maxLength = 4;
+      el("access-code").pattern = "[0-9]{4}";
     });
 
     el("login-form").addEventListener("submit", async function (event) {
@@ -767,6 +1202,75 @@
     el("refresh-button").addEventListener("click", function () { loadData(true).catch(function (error) { toast(error.message, true); }); });
     el("range-from").addEventListener("change", function () { loadData(false).catch(function (error) { toast(error.message, true); }); });
     el("main-nav").addEventListener("click", function (event) { var button = event.target.closest("button[data-view]"); if (button) switchView(button.dataset.view); });
+
+    el("student-services-tabs").addEventListener("click", function (event) {
+      var button = event.target.closest("button[data-ss-tab]");
+      if (button && !button.hidden) activateStudentServicesTab(button.dataset.ssTab);
+    });
+    el("ss-refresh").addEventListener("click", async function () {
+      setBusy(this, true, "Refreshing...");
+      try { await loadStudentServices(); renderStudentServices(); toast("Student services refreshed."); }
+      catch (error) { toast(error.message, true); }
+      finally { setBusy(this, false); }
+    });
+    ["ss-campus-search","ss-campus-filter","ss-campus-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentCampus); });
+    ["ss-accommodation-search","ss-accommodation-filter","ss-accommodation-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentAccommodation); });
+    ["ss-pass-search","ss-pass-filter","ss-pass-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentPasses); });
+    ["ss-duty-search","ss-duty-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentDuty); });
+    ["ss-recent-search","ss-recent-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentRecent); });
+    ["ss-fee-search","ss-fee-filter","ss-fee-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentFees); });
+
+    el("view-student-services").addEventListener("click", function (event) {
+      var edit = event.target.closest(".ss-edit-student");
+      if (edit) { openStudentServiceEdit(edit.dataset.registration); return; }
+      var pass = event.target.closest(".ss-open-pass");
+      if (pass) openStudentPass(pass.dataset.id).catch(function (error) { toast(error.message, true); });
+    });
+    el("ss-student-close").addEventListener("click", closeStudentServiceEdit);
+    el("ss-student-cancel").addEventListener("click", closeStudentServiceEdit);
+    el("ss-student-modal").addEventListener("click", function (event) { if (event.target === this) closeStudentServiceEdit(); });
+    el("ss-edit-campus-status").addEventListener("change", toggleStudentEditFields);
+    el("ss-remove-accommodation").addEventListener("change", toggleStudentEditFields);
+    el("ss-student-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      saveStudentServiceEdit(event.currentTarget).catch(function (error) { toast(error.message, true); });
+    });
+
+    el("ss-pass-close").addEventListener("click", closeStudentPass);
+    el("ss-pass-modal").addEventListener("click", function (event) { if (event.target === this) closeStudentPass(); });
+    all(".ss-pass-decision", el("ss-pass-actions")).forEach(function (button) {
+      button.addEventListener("click", async function () {
+        setBusy(button, true, "Saving...");
+        try { await saveStudentPassDecision(button.dataset.decision); }
+        catch (error) { toast(error.message, true); }
+        finally { setBusy(button, false); }
+      });
+    });
+    el("ss-save-pass-times").addEventListener("click", function () {
+      saveStudentPassTimes(this).catch(function (error) { toast(error.message, true); });
+    });
+    el("ss-fee-term").addEventListener("change", async function () {
+      state.studentTermId = this.value;
+      try { await loadStudentServices(); renderStudentServices(); }
+      catch (error) { toast(error.message, true); }
+    });
+    el("ss-fee-rows").addEventListener("click", async function (event) {
+      var button = event.target.closest(".ss-fee-toggle");
+      if (!button) return;
+      var nextPaid = button.dataset.paid !== "true";
+      if (!window.confirm("Mark this student as " + (nextPaid ? "fees paid" : "fees not paid") + " for the selected term?")) return;
+      setBusy(button, true, "Saving...");
+      try {
+        var notes = window.prompt("Optional note for the fee record:", "");
+        var result = await rpc("admin_update_fee_status", { p_pin: studentBridgePin(), p_registration_number: button.dataset.registration, p_term_id: Number(state.studentTermId), p_fees_paid: nextPaid, p_notes: notes || null });
+        if (result.status !== "success") throw new Error(result.message || "Fee status was not saved.");
+        await loadStudentServices(); renderStudentServices(); toast("Fee status updated.");
+      } catch (error) { toast(error.message, true); }
+      finally { setBusy(button, false); }
+    });
+    el("ss-movement-export-form").addEventListener("submit", function (event) { event.preventDefault(); exportStudentMovements(event.currentTarget).catch(function (error) { toast(error.message, true); }); });
+    el("ss-detail-export-form").addEventListener("submit", function (event) { event.preventDefault(); exportStudentDetail(event.currentTarget).catch(function (error) { toast(error.message, true); }); });
+    el("ss-settings-form").addEventListener("submit", function (event) { event.preventDefault(); saveStudentServiceSettings(event.currentTarget).catch(function (error) { toast(error.message, true); }); });
 
     el("new-task-button").addEventListener("click", function () { resetTaskForm(); el("task-form").hidden = false; el("task-title").focus(); });
     el("cancel-task-button").addEventListener("click", resetTaskForm);
@@ -954,6 +1458,8 @@
     el("tool-plan-end").value = today();
     el("tool-log-date").value = today();
     el("tool-stock-date").value = today();
+    el("ss-export-start").value = addDays(today(), -30);
+    el("ss-export-end").value = today();
     el("access-code").maxLength = 4;
     el("access-code").pattern = "[0-9]{4}";
 
