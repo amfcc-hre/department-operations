@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123d2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>AMFCC Department Operations Portal</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="https://amfcc-hre.github.io/amfcc_student_services/assets_icon.png">
+  <link rel="stylesheet" href="shared_ui.css">
+  <link rel="stylesheet" href="operations.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <main id="login-screen" class="login-shell">
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="brand-mark" aria-hidden="true">A</div>
+      <p class="eyebrow">AMFCC Harare</p>
+      <h1 id="login-title">Department Operations</h1>
+      <p class="muted">Plan work, receive student allocations and submit one connected report.</p>
+
+      <form id="login-form" class="form-stack">
+        <label for="access-type">Workspace</label>
+        <select id="access-type" required>
+          <option value="department">Department</option>
+          <option value="student_leadership">Student Leadership</option>
+          <option value="management">Management</option>
+          <option value="administrator">School Administration</option>
+        </select>
+
+        <div id="department-login-field">
+          <label for="login-department">Department</label>
+          <select id="login-department" required>
+            <option value="">Choose department</option>
+          </select>
+        </div>
+
+        <label for="access-code">4-digit department PIN or leadership password</label>
+        <input id="access-code" type="password" inputmode="numeric" autocomplete="current-password" required>
+        <button class="button primary wide" type="submit">Open workspace</button>
+      </form>
+      <p class="privacy-note">Departments share one workspace login. Staff select or enter their name only when recording work. Student names are kept out of Jira.</p>
+    </section>
+  </main>
+
+  <div id="app-shell" class="app-shell" hidden>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">AMFCC Harare</p>
+        <h1 id="workspace-title">Department Operations</h1>
+        <p id="workspace-subtitle" class="muted"></p>
+      </div>
+      <div class="header-actions">
+        <span id="connection-state" class="status-pill neutral">Checking</span>
+        <button id="refresh-button" class="button secondary" type="button">Refresh</button>
+        <button id="logout-button" class="button quiet" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <div id="operating-mode-banner" class="operating-mode-banner" hidden role="status">
+      <strong id="operating-mode-title">Operating mode</strong>
+      <span id="operating-mode-message"></span>
+    </div>
+
+    <nav id="main-nav" class="tab-bar" aria-label="Workspace sections">
+      <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
+      <button type="button" data-view="requests" data-roles="department,student_leadership,management,administrator">Sessions</button>
+      <button type="button" data-view="daily-report" data-roles="department,management,administrator">Daily report</button>
+      <button type="button" data-view="period-report" data-roles="department,management,administrator">Weekly / monthly</button>
+      <button type="button" data-view="tools" data-roles="department,management,administrator">Department tools</button>
+      <button type="button" data-view="transfers" data-roles="department,management,administrator">Transfers</button>
+      <button type="button" data-view="planner" data-roles="student_leadership,management,administrator">Planner</button>
+      <button type="button" data-view="assignments" data-roles="student_leadership,management,administrator">Groups</button>
+      <button type="button" data-view="reports" data-roles="student_leadership,management,administrator">Review reports</button>
+      <button type="button" data-view="access" data-roles="administrator">Department access</button>
+    </nav>
+
+    <section id="view-overview" class="view active" aria-labelledby="overview-heading">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Right now</p>
+          <h2 id="overview-heading">Work overview</h2>
+        </div>
+        <label class="date-control">Show from <input id="range-from" type="date"></label>
+      </div>
+      <div id="summary-cards" class="summary-grid"></div>
+      <div class="two-column">
+        <article id="overview-session-panel" class="panel">
+          <div class="panel-heading"><h3>Upcoming work sessions</h3><span id="session-count" class="count-badge">0</span></div>
+          <div id="overview-sessions" class="card-list empty-state">No sessions published yet.</div>
+        </article>
+        <article class="panel">
+          <div class="panel-heading"><h3>Notifications</h3><span id="notification-count" class="count-badge">0</span></div>
+          <div id="notification-list" class="card-list empty-state">No new notifications.</div>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="panel-heading"><h3>Work needing attention</h3></div>
+        <div id="attention-list" class="card-list empty-state">Nothing currently needs attention.</div>
+      </article>
+    </section>
+
+    <section id="view-tasks" class="view" aria-labelledby="tasks-heading">
+      <div class="view-heading">
+        <div><p class="eyebrow">Department workload</p><h2 id="tasks-heading">Tasks and jobs</h2></div>
+        <button id="new-task-button" class="button primary" type="button">Add task</button>
+      </div>
+      <form id="task-form" class="panel form-grid" hidden>
+        <input id="task-id" type="hidden">
+        <label class="admin-department-field">Department<select id="task-department"></select></label>
+        <label class="span-2">Task name<input id="task-title" maxlength="180" required></label>
+        <label class="span-2">What needs to be done<textarea id="task-description" rows="3"></textarea></label>
+        <label>Type<select id="task-type"><option value="ad_hoc">One-off task</option><option value="regular">Regular task</option><option value="project">Project task</option><option value="maintenance">Maintenance</option><option value="building">Building</option><option value="incident_follow_up">Incident follow-up</option><option value="emergency">Emergency</option></select></label>
+        <label>Cadence<select id="task-cadence"><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select></label>
+        <label>Priority<select id="task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+        <label>Status<select id="task-status"><option value="backlog">Backlog</option><option value="ready">Ready</option><option value="requested">People requested</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></label>
+        <label>Due date<input id="task-due-date" type="date"></label>
+        <label>People normally needed<input id="task-people" type="number" min="0" max="100" value="0"></label>
+        <label>Owner<input id="task-owner" list="staff-name-options" placeholder="Select or type a name"></label>
+        <label>Recorded by<input id="task-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <label class="check-row span-2"><input id="task-external-allowed" type="checkbox" checked> Student Leadership may assign people outside the department membership</label>
+        <div class="form-actions span-2"><button class="button primary" type="submit">Save task</button><button id="cancel-task-button" class="button quiet" type="button">Cancel</button></div>
+      </form>
+      <div class="filter-row">
+        <label>Status<select id="task-filter"><option value="open">Open tasks</option><option value="all">All tasks</option><option value="done">Completed</option><option value="blocked">Blocked</option></select></label>
+        <label class="admin-department-field">Department<select id="task-list-department"><option value="">All departments</option></select></label>
+      </div>
+      <div id="task-list" class="card-list empty-state">No tasks yet.</div>
+    </section>
+
+    <section id="view-requests" class="view" aria-labelledby="requests-heading">
+      <div class="view-heading"><div><p class="eyebrow">People and time</p><h2 id="requests-heading">Session requests</h2></div></div>
+      <form id="request-form" class="panel form-grid department-entry">
+        <label class="admin-department-field">Department<select id="request-department"></select></label>
+        <label>Request type<select id="request-kind"><option value="planned">Planned task</option><option value="unexpected">Unexpected task</option></select></label>
+        <label>Work date<input id="request-date" type="date" required></label>
+        <label>Session<select id="request-slot" required></select></label>
+        <label>People requested<input id="request-headcount" type="number" min="1" max="100" value="1" required><span class="field-help">Include your own department members. Do not request names.</span></label>
+        <label class="span-2">Tasks for this session<select id="request-tasks" multiple size="5"></select><span class="field-help">Select one or more. On an iPad, tap each task while holding the on-screen multi-select control if shown.</span></label>
+        <label class="span-2">What Student Leadership should know<textarea id="request-notes" rows="3"></textarea></label>
+        <label>Requested by<input id="request-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <div class="form-actions"><button class="button primary" type="submit">Send request</button></div>
+      </form>
+      <div id="request-rules" class="callout">Next-day planned requests close at 6:00 pm. Use Unexpected task only for genuinely unforeseen work.</div>
+      <div id="request-list" class="card-list empty-state">No session requests in this period.</div>
+    </section>
+
+    <section id="view-daily-report" class="view" aria-labelledby="daily-heading">
+      <div class="view-heading"><div><p class="eyebrow">One report, reused everywhere</p><h2 id="daily-heading">Daily department report</h2></div><span id="daily-draft-state" class="status-pill neutral">Not saved</span></div>
+      <form id="daily-report-form" class="panel report-form form-grid">
+        <label class="admin-department-field">Department<select id="daily-department"></select></label>
+        <label>Report date<input id="daily-date" type="date" required></label>
+        <label>Prepared by<input id="daily-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <label>Staff on duty<input id="daily-staff" list="staff-name-options" placeholder="Names or team"></label>
+        <label class="span-2">Work completed<textarea id="daily-completed" rows="4" placeholder="What was completed, produced, delivered or checked?"></textarea></label>
+        <label class="span-2">Work still open<textarea id="daily-open" rows="3" placeholder="What carries forward?"></textarea></label>
+        <label class="span-2">Challenges or exceptions<textarea id="daily-challenges" rows="3"></textarea></label>
+        <label class="span-2">Action required<textarea id="daily-action" rows="3" placeholder="What needs follow-up, by whom and by when?"></textarea></label>
+        <label class="span-2">Stock and equipment position<textarea id="daily-stock" rows="3"></textarea></label>
+        <label class="span-2">Main risk<textarea id="daily-risks" rows="3"></textarea></label>
+        <label class="span-2">Support required<textarea id="daily-support" rows="3"></textarea></label>
+        <label class="span-2">Plan for next work period<textarea id="daily-next" rows="3"></textarea></label>
+
+        <div class="span-2 metric-section">
+          <div class="panel-heading"><div><h3>Key figures</h3><p class="field-help">Targets are optional. Status is selected per KPI so lower-is-better measures are handled correctly.</p></div><button id="add-metric-button" class="button secondary" type="button">Add figure</button></div>
+          <div id="metric-rows"></div>
+        </div>
+
+        <div class="form-actions span-2">
+          <button id="save-daily-draft" class="button secondary" type="button">Save draft</button>
+          <button id="submit-daily-report" class="button primary" type="submit">Submit to Student Leadership</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-period-report" class="view" aria-labelledby="period-heading">
+      <div class="view-heading"><div><p class="eyebrow">Built from daily records</p><h2 id="period-heading">Weekly and monthly report</h2></div></div>
+      <form id="period-controls" class="panel filter-row">
+        <label>Report type<select id="period-type"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
+        <label class="admin-department-field">Department<select id="period-department"></select></label>
+        <label>Start<input id="period-start" type="date" required></label>
+        <label>End<input id="period-end" type="date" required></label>
+        <button class="button primary" type="submit">Generate</button>
+      </form>
+      <form id="period-report-form" class="panel report-form form-grid" hidden>
+        <div id="period-source-summary" class="callout span-2"></div>
+        <label>Prepared by<input id="period-actor" list="staff-name-options" required></label>
+        <label>Overall status<select id="period-status"><option value="green">Green</option><option value="amber">Amber</option><option value="red">Red</option></select></label>
+        <label class="span-2">Summary<textarea id="period-summary" rows="3"></textarea></label>
+        <label class="span-2">Work completed<textarea id="period-completed" rows="5"></textarea></label>
+        <label class="span-2">Work still open<textarea id="period-open" rows="4"></textarea></label>
+        <label class="span-2">Challenges<textarea id="period-challenges" rows="4"></textarea></label>
+        <label class="span-2">Actions and follow-up<textarea id="period-action" rows="4"></textarea></label>
+        <label class="span-2">Stock and equipment<textarea id="period-stock" rows="3"></textarea></label>
+        <label class="span-2">Risks<textarea id="period-risks" rows="3"></textarea></label>
+        <label class="span-2">Support required<textarea id="period-support" rows="3"></textarea></label>
+        <label class="span-2">Next period plan<textarea id="period-next" rows="3"></textarea></label>
+        <div class="form-actions span-2"><button id="save-period-draft" class="button secondary" type="button">Save draft</button><button class="button primary" type="submit">Submit report</button></div>
+      </form>
+    </section>
+
+    <section id="view-tools" class="view" aria-labelledby="tools-heading">
+      <div class="view-heading"><div><p class="eyebrow">Department-specific workspace</p><h2 id="tools-heading">Department tools</h2><p id="tools-description" class="muted"></p></div></div>
+      <label class="admin-department-field date-control">Department<select id="tools-department"></select></label>
+      <div id="tool-quick-links" class="tool-links"></div>
+      <div class="three-column tool-columns">
+        <form id="tool-plan-form" class="panel form-stack">
+          <h3 id="tool-plan-heading">Plan work</h3>
+          <label>Plan type<input id="tool-plan-type" required placeholder="Enter a type"></label>
+          <label>Title<input id="tool-plan-title" required placeholder="Enter the plan"></label>
+          <div class="filter-row"><label>Starts<input id="tool-plan-start" type="date" required></label><label>Ends<input id="tool-plan-end" type="date" required></label></div>
+          <label>Details<textarea id="tool-plan-details" rows="4"></textarea></label>
+          <label>Recorded by<input id="tool-plan-actor" list="staff-name-options" required></label>
+          <button class="button primary" type="submit">Save plan</button>
+        </form>
+        <form id="tool-stock-item-form" class="panel form-stack">
+          <h3 id="tool-stock-heading">Add stock item</h3>
+          <p class="field-help">The list starts empty. Enter the items your department actually uses.</p>
+          <label>Item name<input id="tool-stock-name" required></label>
+          <label>Category<input id="tool-stock-category" placeholder="Enter your own category"></label>
+          <label>Unit<input id="tool-stock-unit" required placeholder="kg, litre, packet, item"></label>
+          <label>Opening quantity<input id="tool-stock-opening" type="number" min="0" step="0.01"></label>
+          <label>Low-stock level<input id="tool-stock-reorder" type="number" min="0" step="0.01"></label>
+          <label>Recorded by<input id="tool-stock-actor" list="staff-name-options" required></label>
+          <button class="button primary" type="submit">Add item</button>
+        </form>
+        <form id="tool-log-form" class="panel form-stack">
+          <h3 id="tool-log-heading">Record department activity</h3>
+          <label>Date<input id="tool-log-date" type="date" required></label>
+          <label>Record type<input id="tool-log-type" required placeholder="Enter a type"></label>
+          <label>Title<input id="tool-log-title" required></label>
+          <div class="filter-row"><label>Quantity<input id="tool-log-quantity" type="number" step="0.01"></label><label>Unit<input id="tool-log-unit"></label></div>
+          <label>Notes<textarea id="tool-log-notes" rows="3"></textarea></label>
+          <label>Recorded by<input id="tool-log-actor" list="staff-name-options" required></label>
+          <button class="button primary" type="submit">Save record</button>
+        </form>
+      </div>
+      <div class="two-column">
+        <article class="panel">
+          <div class="panel-heading"><h3>Current stock</h3></div>
+          <form id="tool-stock-movement-form" class="filter-row">
+            <label>Item<select id="tool-stock-item" required><option value="">Add an item first</option></select></label>
+            <label>Action<select id="tool-stock-movement"><option value="received">Received</option><option value="used">Used</option><option value="wasted">Wasted</option><option value="adjustment">Positive adjustment</option></select></label>
+            <label>Quantity<input id="tool-stock-quantity" type="number" min="0.01" step="0.01" required></label>
+            <label>Date<input id="tool-stock-date" type="date" required></label>
+            <label>Notes<input id="tool-stock-notes"></label>
+            <label>Recorded by<input id="tool-movement-actor" list="staff-name-options" required></label>
+            <button class="button secondary" type="submit">Record movement</button>
+          </form>
+          <div id="tool-stock-list" class="card-list empty-state">No stock items yet.</div>
+        </article>
+        <article class="panel"><div class="panel-heading"><h3>Recent plans and records</h3></div><div id="tool-history" class="card-list empty-state">No tool records yet.</div></article>
+      </div>
+      <article id="kitchen-service-panel" class="panel" hidden>
+        <div class="panel-heading"><div><h3>Kitchen meal service</h3><p class="field-help">Check students in here, or open the separate student-facing check-in link on another device.</p></div><a class="button secondary" href="https://amfcc-hre.github.io/amfcc_student_services/meal_index.html" target="_blank" rel="noopener">Open student check-in</a></div>
+        <div id="kitchen-counts" class="summary-grid compact"></div>
+        <form id="kitchen-checkin-form" class="filter-row">
+          <label>Meal<select id="kitchen-meal"><option value="Breakfast">Breakfast</option><option value="Lunch">Lunch</option><option value="Break-fast 4pm">Break-fast 4pm</option><option value="Supper">Supper</option></select></label>
+          <label>Registration number<input id="kitchen-registration" inputmode="numeric" maxlength="5" required></label>
+          <button class="button primary" type="submit">Check in</button>
+          <button id="kitchen-export" class="button secondary" type="button">Export today</button>
+        </form>
+      </article>
+      <article id="clinic-service-panel" class="panel" hidden>
+        <div class="panel-heading"><div><h3>Clinic bed rest</h3><p class="field-help">Clinic stock is tracked above. Bed-rest details remain visible only inside the Clinic workspace.</p></div><button id="clinic-refresh" class="button secondary" type="button">Refresh</button></div>
+        <label>Find student<input id="clinic-search" type="search" placeholder="Name or registration number"></label>
+        <div class="two-column"><div><h4>Search results</h4><div id="clinic-results" class="card-list empty-state">Start typing to search.</div></div><div><h4>Currently on bed rest</h4><div id="clinic-active" class="card-list empty-state">No active bed-rest records.</div></div></div>
+      </article>
+    </section>
+
+    <section id="view-transfers" class="view" aria-labelledby="transfers-heading">
+      <div class="view-heading"><div><p class="eyebrow">No duplicate stock entry</p><h2 id="transfers-heading">Internal transfers</h2></div></div>
+      <form id="transfer-form" class="panel form-grid department-entry">
+        <label class="admin-department-field">Sending department<select id="transfer-from"></select></label>
+        <label>Receiving department<select id="transfer-to" required></select></label>
+        <label>Date<input id="transfer-date" type="date" required></label>
+        <label>Reference<input id="transfer-reference" placeholder="Optional delivery note"></label>
+        <label>Item<input id="transfer-item" required></label>
+        <label>Quantity<input id="transfer-quantity" type="number" min="0.01" step="0.01" required></label>
+        <label>Unit<input id="transfer-unit" placeholder="kg, tray, crate, item" required></label>
+        <label>Sent by<input id="transfer-actor" list="staff-name-options" required></label>
+        <label class="span-2">Notes<textarea id="transfer-notes" rows="2"></textarea></label>
+        <div class="form-actions span-2"><button class="button primary" type="submit">Record transfer</button></div>
+      </form>
+      <div id="transfer-list" class="card-list empty-state">No transfers in this period.</div>
+    </section>
+
+    <section id="view-planner" class="view" aria-labelledby="planner-heading">
+      <div class="view-heading"><div><p class="eyebrow">Student Leadership</p><h2 id="planner-heading">Weekly session planner</h2></div></div>
+      <div class="filter-row"><label>Planned by<input id="planner-actor" list="staff-name-options" placeholder="Select or type your name" required></label></div>
+      <div id="planner-board" class="planner-grid empty-state">No pending requests.</div>
+    </section>
+
+    <section id="view-assignments" class="view" aria-labelledby="assignments-heading">
+      <div class="view-heading"><div><p class="eyebrow">Student Leadership groups</p><h2 id="assignments-heading">Assign groups</h2><p class="muted">Departments request a total number. Student Leadership assigns cohort labels, not individual names.</p></div></div>
+      <div id="group-capacity-cards" class="summary-grid"></div>
+      <form id="assignment-form" class="panel form-grid">
+        <label class="span-2">Published session<select id="assignment-session" required></select></label>
+        <label>1st year men<input id="group-year1-men" type="number" min="0" value="0"></label>
+        <label>1st year ladies<input id="group-year1-ladies" type="number" min="0" value="0"></label>
+        <label>2nd year men<input id="group-year2-men" type="number" min="0" value="0"></label>
+        <label>2nd year ladies<input id="group-year2-ladies" type="number" min="0" value="0"></label>
+        <div id="group-session-capacity" class="callout span-2">Choose a published session to see availability for that date and slot.</div>
+        <label>Assigned by<input id="assignment-actor" list="staff-name-options" required></label>
+        <div class="form-actions"><button class="button primary" type="submit">Publish group allocation</button></div>
+      </form>
+    </section>
+
+    <section id="view-reports" class="view" aria-labelledby="reports-heading">
+      <div class="view-heading"><div><p class="eyebrow">Verification and approval</p><h2 id="reports-heading">Department reports</h2></div></div>
+      <div class="filter-row"><label>Status<select id="report-review-filter"><option value="review">Needs review</option><option value="all">All</option><option value="approved">Approved / locked</option></select></label><label>Reviewed by<input id="reviewer-name" list="staff-name-options" placeholder="Select or type your name"></label></div>
+      <div id="report-review-list" class="card-list empty-state">No reports need review.</div>
+      <article class="panel management-action-panel">
+        <div class="panel-heading"><h3>Create management action</h3></div>
+        <form id="management-action-form" class="form-grid">
+          <label>Department<select id="action-department"><option value="">Institution-wide</option></select></label>
+          <label>Priority<select id="action-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label class="span-2">Action<input id="action-summary" required></label>
+          <label class="span-2">Details<textarea id="action-description" rows="3"></textarea></label>
+          <label>Owner<input id="action-owner" list="staff-name-options"></label>
+          <label>Due date<input id="action-due-date" type="date"></label>
+          <label>Recorded by<input id="action-actor" list="staff-name-options"></label>
+          <label class="check-row"><input id="action-jira" type="checkbox"> Send to Jira now</label>
+          <div class="form-actions span-2"><button class="button primary" type="submit">Create action</button></div>
+        </form>
+      </article>
+    </section>
+
+    <section id="view-access" class="view" aria-labelledby="access-heading">
+      <div class="view-heading"><div><p class="eyebrow">One PIN per department</p><h2 id="access-heading">Department logins</h2></div></div>
+      <div class="callout">Each department has its own four-digit PIN. PINs are stored only as bcrypt hashes. Staff still select or enter their name when recording work.</div>
+      <div id="department-access-list" class="access-grid"></div>
+      <article class="panel jira-status-panel">
+        <div class="panel-heading"><h3>Jira management sync</h3><span id="jira-sync-state" class="status-pill neutral">Not configured</span></div>
+        <p>Only approved reports, escalated risks and management actions enter Jira. Student assignments and detailed production transactions stay in Supabase.</p>
+        <div id="jira-sync-counts" class="summary-grid compact"></div>
+      </article>
+    </section>
+
+    <datalist id="staff-name-options"></datalist>
+  </div>
+
+  <template id="metric-row-template">
+    <div class="metric-row">
+      <input data-field="metric_name" placeholder="Figure name" aria-label="Figure name">
+      <input data-field="target_value" type="number" step="any" placeholder="Target" aria-label="Target">
+      <input data-field="actual_value" type="number" step="any" placeholder="Actual" aria-label="Actual">
+      <input data-field="unit" placeholder="Unit" aria-label="Unit">
+      <select data-field="status" aria-label="Status"><option value="not_set">Not set</option><option value="green">Green</option><option value="amber">Amber</option><option value="red">Red</option></select>
+      <button class="icon-button remove-metric" type="button" aria-label="Remove figure">×</button>
+    </div>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="shared_config.js"></script>
+  <script src="operations.js"></script>
+</body>
+</html>
