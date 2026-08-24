@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123d2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>AMFCC Kitchen Meal Check-In</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="operations.css?v=5">
+  <link rel="stylesheet" href="meal-checkin.css?v=1">
+</head>
+<body class="kiosk-body">
+  <main class="kiosk-shell">
+    <header class="kiosk-header">
+      <div><p class="eyebrow">AMFCC Kitchen</p><h1>Meal check-in</h1><p id="kiosk-session" class="muted">Checking Kitchen access.</p></div>
+      <a class="button quiet" href="index.html">Back to Operations</a>
+    </header>
+
+    <section id="kiosk-access-required" class="panel access-required" hidden>
+      <h2>Kitchen login required</h2>
+      <p>This scanner is part of Department Operations. Open Operations, choose Kitchen and enter the Kitchen PIN first.</p>
+      <a class="button primary" href="index.html">Open Kitchen login</a>
+    </section>
+
+    <section id="kiosk-workspace" hidden>
+      <div class="meal-choice" aria-label="Meal selection">
+        <button class="meal-button selected" type="button" data-meal="Breakfast">Breakfast</button>
+        <button class="meal-button" type="button" data-meal="Lunch">Lunch</button>
+        <button class="meal-button" type="button" data-meal="Break-fast 4pm">Break-fast 4pm</button>
+        <button class="meal-button" type="button" data-meal="Supper">Supper</button>
+      </div>
+
+      <section class="scan-card">
+        <div class="scanner-ready"><span id="scanner-light" aria-hidden="true"></span><strong id="scanner-state">Ready to scan</strong></div>
+        <p>Scan the student card with the connected 2D scanner. The scanner should send Enter after the card code.</p>
+        <form id="scan-form" autocomplete="off">
+          <label for="scan-input">Student card or registration number</label>
+          <input id="scan-input" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Scan card or enter 5 digits" required autofocus>
+          <button id="scan-submit" class="button primary wide" type="submit">Check student in</button>
+        </form>
+        <p class="manual-note">Manual entry is available if a card cannot be scanned.</p>
+      </section>
+
+      <section id="scan-result" class="kiosk-result neutral" role="status" aria-live="assertive">
+        <strong>Waiting for the next student</strong>
+        <span>Select the meal once, then keep scanning cards.</span>
+      </section>
+
+      <section class="kiosk-footer panel">
+        <div><strong id="today-total">0</strong><span>check-ins for the selected meal today</span></div>
+        <button id="refresh-total" class="button secondary" type="button">Refresh count</button>
+      </section>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="shared_config.js"></script>
+  <script src="meal-checkin.js?v=1"></script>
+</body>
+</html>

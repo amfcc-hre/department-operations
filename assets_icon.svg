@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">AMFCC Operations</title>
+  <rect width="512" height="512" rx="112" fill="#123d2b"/>
+  <path d="M120 392 229 104h55l108 288h-65l-22-66h-101l-22 66zm104-124h61l-30-93z" fill="#fff"/>
+  <rect x="98" y="414" width="316" height="24" rx="12" fill="#d3a928"/>
+</svg>
