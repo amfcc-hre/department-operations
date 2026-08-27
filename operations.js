@@ -7,6 +7,7 @@
     session: null,
     data: null,
     groups: { groups: [], allocations: [], holiday_mode: false },
+    planning: { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] },
     mode: { mode: "normal", conference_mode: false, holiday_mode: false },
     tools: null,
     studentServices: null,
@@ -160,6 +161,12 @@
     return data;
   }
 
+  function dispatchPassEmail() {
+    if (state.client.functions && typeof state.client.functions.invoke === "function") {
+      state.client.functions.invoke("pass-email-worker").catch(function () {});
+    }
+  }
+
   function fillSelect(select, items, config) {
     if (!select) return;
     config = config || {};
@@ -230,6 +237,14 @@
     all(".admin-department-field").forEach(function (node) { node.hidden = role === "department"; });
     all(".department-entry").forEach(function (node) { node.hidden = role === "student_leadership"; });
     all("[data-ss-admin-only]").forEach(function (node) { node.hidden = role !== "administrator"; });
+    el("overview-range-control").hidden = role === "administrator";
+    el("tasks-description").textContent = role === "department"
+      ? "Submit work for a day. Student Leadership chooses the session and student groups."
+      : role === "student_leadership"
+      ? "Approve, allocate and publish pending work from the same page."
+      : role === "administrator"
+      ? "View and export the school task list, and maintain the weekly duty roster."
+      : "Track open work and maintain the weekly duty roster.";
     var active = el("main-nav").querySelector("button.active");
     applyOperatingModeVisibility();
     if (active && active.hidden && state.data) switchView(workspaceDefaultView());
@@ -244,7 +259,7 @@
         button.hidden = conference || !allowed;
       }
     });
-    el("overview-session-panel").hidden = conference;
+    el("overview-session-panel").hidden = conference || state.session.role === "administrator" || isLeadership();
     var banner = el("operating-mode-banner");
     banner.hidden = state.mode.mode === "normal" && !conference;
     banner.className = "operating-mode-banner " + (conference ? "conference" : state.mode.mode);
@@ -253,16 +268,15 @@
       ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions and meal deadlines. Record every piece of work as an Emergency task."
       : "Morning and Afternoon task sessions are available during Holiday Mode.";
     if (conference) {
-      el("task-type").value = "emergency";
-      el("task-priority").value = "critical";
-      el("task-type").disabled = true;
-      el("task-priority").disabled = true;
+      if (el("work-priority")) {
+        el("work-priority").value = "crucial";
+        el("work-priority").disabled = true;
+        el("work-crucial-field").hidden = false;
+        el("work-crucial-reason").required = true;
+      }
       var active = el("main-nav").querySelector("button.active");
       if (active && ["requests","planner","assignments"].indexOf(active.dataset.view) >= 0) switchView("tasks");
-    } else {
-      el("task-type").disabled = false;
-      el("task-priority").disabled = false;
-    }
+    } else if (el("work-priority")) el("work-priority").disabled = false;
   }
 
   async function signOut(callServer) {
@@ -273,6 +287,7 @@
     state.initialViewApplied = false;
     state.data = null;
     state.studentServices = null;
+    state.planning = { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] };
     state.studentEdit = null;
     state.passReview = null;
     sessionStorage.removeItem("amfcc_ops_session");
@@ -293,6 +308,11 @@
       p_session_token: state.session.session_token,
       p_from_date: from,
       p_to_date: addDays(from, 21)
+    });
+    state.planning = await rpc("ops_planning_dashboard", {
+      p_session_token: state.session.session_token,
+      p_from_week: mondayFor(today()),
+      p_to_week: addDays(mondayFor(today()), 365)
     });
     (state.data.session_requests || []).forEach(function (request) {
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
@@ -321,7 +341,7 @@
 
   function populateWorkspaceInputs() {
     var departments = (state.data.departments || []).filter(function (d) { return d.workspace_enabled !== false; });
-    var selectors = ["task-department","request-department","daily-department","period-department","transfer-from","transfer-to","task-list-department","action-department","tools-department"];
+    var selectors = ["task-department","request-department","daily-department","period-department","transfer-from","transfer-to","task-list-department","action-department","tools-department","standing-department"];
     selectors.forEach(function (id) {
       var node = el(id);
       if (!node) return;
@@ -336,6 +356,11 @@
       : state.groups.holiday_mode
       ? "Holiday mode is active. Morning and Afternoon slots are available. Next-day planned requests close at 6:00 pm."
       : "Next-day planned requests close at 6:00 pm. Use Unexpected task only for genuinely unforeseen work.";
+    if (el("standing-slot-options")) {
+      el("standing-slot-options").innerHTML = '<legend>Sessions</legend><p class="field-help">Leave every session unticked to reserve the department for every session.</p>' + requestSlots.map(function (slot) {
+        return '<label><input type="checkbox" name="standing-slot" value="' + escapeHtml(slot.code) + '"> ' + escapeHtml(slot.name) + '</label>';
+      }).join("");
+    }
     if (!isDepartment() && el("tools-department") && !el("tools-department").value && departments.length) el("tools-department").value = departments[0].id;
     configureReportingSection("daily");
     configureReportingSection("period");
@@ -352,14 +377,24 @@
     var sessions = isConference() ? [] : (state.data.work_sessions || []).filter(function (s) { return s.work_date >= todayIso && s.status !== "cancelled"; });
     var pending = isConference() ? [] : (state.data.session_requests || []).filter(function (r) { return r.status === "pending"; });
     var reports = (state.data.reports || []).filter(function (r) { return ["submitted","verified","returned"].indexOf(r.status) >= 0; });
-    var cards = [
-      [openTasks.length,"Open tasks",openTasks.some(function (t) { return t.status === "blocked"; })],
-      [sessions.length,"Upcoming sessions",false],
-      [pending.length,"Session requests",pending.length > 0 && !isDepartment()],
-      [reports.length,isDepartment() ? "Reports in review" : "Reports needing action",reports.some(function (r) { return r.status === "returned"; })]
+    var counts = state.studentServices && state.studentServices.counts || {};
+    var fourthCard = isLeadership()
+      ? [(state.data.notifications || []).filter(function (notice) { return !notice.read; }).length,"Unread notifications",false,"overview",null]
+      : [reports.length,isDepartment() ? "Reports in review" : "Reports needing action",reports.some(function (r) { return r.status === "returned"; }),isDepartment() ? "daily-report" : "reports",null];
+    var cards = state.session.role === "administrator" ? [
+      [openTasks.length,"Open tasks",openTasks.some(function (t) { return t.status === "blocked"; }),"tasks",null],
+      [counts.on_campus || 0,"Students on campus",false,"student-services","campus:IN"],
+      [counts.off_campus || 0,"Students off campus",false,"student-services","campus:OUT"],
+      [counts.pending_passes || 0,"Pending passes",Number(counts.pending_passes || 0) > 0,"student-services","passes:pending"],
+      [counts.overdue_passes || 0,"Overdue passes",Number(counts.overdue_passes || 0) > 0,"student-services","passes:OVERDUE"]
+    ] : [
+      [openTasks.length,"Open tasks",openTasks.some(function (t) { return t.status === "blocked"; }),"tasks",null],
+      [sessions.length,"Upcoming sessions",false,"overview",null],
+      [pending.length,"Tasks waiting for allocation",pending.length > 0 && !isDepartment(),"tasks",null],
+      fourthCard
     ];
     el("summary-cards").innerHTML = cards.map(function (card) {
-      return '<article class="summary-card' + (card[2] ? " alert" : "") + '"><div class="label">' + escapeHtml(card[1]) + '</div><div class="value">' + card[0] + "</div></article>";
+      return '<button type="button" class="summary-card summary-button' + (card[2] ? " alert" : "") + '" data-open-view="' + escapeHtml(card[3]) + '"' + (card[4] ? ' data-open-target="' + escapeHtml(card[4]) + '"' : '') + '><span class="label">' + escapeHtml(card[1]) + '</span><span class="value">' + card[0] + "</span></button>";
     }).join("");
   }
 
@@ -396,7 +431,9 @@
     el("notification-count").textContent = String(unread);
     el("notification-list").classList.toggle("empty-state", !items.length);
     el("notification-list").innerHTML = items.length ? items.slice(0, 10).map(function (notice) {
-      return '<article class="data-card ' + (notice.read ? "read" : "") + '"><div class="card-top"><div><h3>' + escapeHtml(notice.title) + '</h3><p>' + escapeHtml(notice.message) + '</p></div>' + (!notice.read ? '<button class="button quiet mark-read" data-id="' + notice.id + '">Mark read</button>' : '') + '</div><div class="card-meta"><span>' + escapeHtml(formatDate(notice.created_at)) + "</span></div></article>";
+      var target = notice.link_type === "report" ? "reports" : notice.link_type === "gate_pass" ? "student-services" : "tasks";
+      var openTarget = notice.link_type === "gate_pass" ? ' data-open-target="passes:ALL"' : "";
+      return '<article class="data-card notification-card ' + (notice.read ? "read" : "") + '" data-open-view="' + target + '"' + openTarget + '><div class="card-top"><div><h3>' + escapeHtml(notice.title) + '</h3><p>' + escapeHtml(notice.message) + '</p></div>' + (!notice.read ? '<button class="button quiet mark-read" data-id="' + notice.id + '">Mark read</button>' : '') + '</div><div class="card-meta"><span>' + escapeHtml(formatDate(notice.created_at)) + "</span></div></article>";
     }).join("") : "No new notifications.";
   }
 
@@ -416,6 +453,51 @@
     el("attention-list").innerHTML = html || "Nothing currently needs attention.";
   }
 
+  function renderDutyRoster() {
+    var planning = state.planning || {}, current = planning.current_duty || {}, duties = planning.duties || [];
+    el("overview-prefect-duty").textContent = current.prefect_on_duty || "Not entered";
+    el("overview-senior-duty").textContent = current.senior_prefect_on_duty || "Not entered";
+    el("duty-current-summary").textContent = current.prefect_on_duty
+      ? current.prefect_on_duty + " / " + current.senior_prefect_on_duty
+      : "Not entered";
+    el("duty-roster-list").classList.toggle("empty-state", !duties.length);
+    el("duty-roster-list").innerHTML = duties.length ? duties.map(function (duty) {
+      return '<button type="button" class="compact-row duty-edit" data-week="' + escapeHtml(duty.week_start) + '"><span><strong>' + escapeHtml(formatDate(duty.week_start)) + '</strong><small>Prefect: ' + escapeHtml(duty.prefect_on_duty) + ' · Senior: ' + escapeHtml(duty.senior_prefect_on_duty) + '</small></span><span class="button quiet">Edit</span></button>';
+    }).join("") : "No duty weeks entered yet.";
+  }
+
+  function renderReportsAttention() {
+    var reports = (state.data.reports || []).filter(function (report) {
+      return ["submitted","verified","returned"].indexOf(report.status) >= 0;
+    });
+    el("overview-report-count").textContent = String(reports.length);
+    el("overview-report-list").classList.toggle("empty-state", !reports.length);
+    el("overview-report-list").innerHTML = reports.length ? reports.slice(0, 5).map(function (report) {
+      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(departmentPath(report.department_id)) + '</h3><p>' + escapeHtml(titleCase(report.report_type)) + ' · ' + escapeHtml(formatDate(report.period_end)) + '</p></div>' + statusPill(report.status) + '</div></article>';
+    }).join("") : "No reports need attention.";
+  }
+
+  function departmentGroupCounts(departmentId) {
+    var result = {};
+    (state.groups.groups || []).forEach(function (group) { result[group.code] = 0; });
+    (state.planning.department_group_counts || []).filter(function (item) {
+      return item.department_id === departmentId;
+    }).forEach(function (item) { result[item.group_code] = Number(item.member_count || 0); });
+    return result;
+  }
+
+  function renderDepartmentMemberSummary() {
+    if (!isDepartment()) return;
+    var counts = departmentGroupCounts(currentDepartmentId());
+    var total = Object.keys(counts).reduce(function (sum, code) { return sum + Number(counts[code] || 0); }, 0);
+    var details = (state.groups.groups || []).filter(function (group) { return counts[group.code] > 0; }).map(function (group) {
+      return counts[group.code] + " " + group.label;
+    }).join(", ");
+    el("department-member-summary").innerHTML = total
+      ? '<strong>' + total + ' department member' + (total === 1 ? "" : "s") + ' included automatically.</strong>' + (details ? ' ' + escapeHtml(details) + '.' : '')
+      : '<strong>No department members are configured yet.</strong> Student Leadership can enter the four cohort counts under Standing departments.';
+  }
+
   function renderTasks() {
     var filter = value("task-filter") || "open";
     var departmentFilter = value("task-list-department");
@@ -429,9 +511,13 @@
     el("task-list").classList.toggle("empty-state", !tasks.length);
     el("task-list").innerHTML = tasks.length ? tasks.map(function (task) {
       var department = departmentById(task.department_id);
+      var metadata = task.metadata && typeof task.metadata === "object" ? task.metadata : {};
       var displayType = isConference() ? "emergency" : task.task_type;
       var displayPriority = isConference() ? "critical" : task.priority;
-      return '<article class="data-card ' + (task.status === "blocked" || isConference() ? "alert" : "") + '"><div class="card-top"><div><h3>' + escapeHtml(task.title) + '</h3><p>' + escapeHtml(department ? department.name : "") + " · " + escapeHtml(titleCase(displayType)) + " · " + escapeHtml(titleCase(task.cadence)) + '</p></div>' + statusPill(task.status) + '</div>' + (task.description ? '<p>' + escapeHtml(task.description) + "</p>" : "") + '<div class="card-meta"><span>Priority: ' + escapeHtml(titleCase(displayPriority)) + '</span><span>Due: ' + escapeHtml(formatDate(task.due_date)) + '</span><span>People: ' + task.requested_people + '</span><span>Owner: ' + escapeHtml(task.owner_name || "Not assigned") + '</span></div><div class="card-actions"><button class="button secondary edit-task" data-id="' + task.id + '">Edit</button></div></article>';
+      var peopleText = metadata.simple_request
+        ? Number(metadata.department_member_count || 0) + " department + " + Number(metadata.extra_people_requested || 0) + " extra = " + Number(task.requested_people || 0)
+        : String(task.requested_people || 0);
+      return '<article class="data-card ' + (task.status === "blocked" || isConference() ? "alert" : "") + '"><div class="card-top"><div><h3>' + escapeHtml(task.title) + '</h3><p>' + escapeHtml(department ? department.name : "") + " · " + escapeHtml(titleCase(displayType)) + " · " + escapeHtml(titleCase(task.cadence)) + '</p></div>' + statusPill(task.status) + '</div>' + (task.description ? '<p>' + escapeHtml(task.description) + "</p>" : "") + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="card-meta"><span>Priority: ' + escapeHtml(titleCase(displayPriority)) + '</span><span>Working day: ' + escapeHtml(formatDate(task.due_date)) + '</span><span>People: ' + escapeHtml(peopleText) + '</span><span>Owner: ' + escapeHtml(task.owner_name || "Not assigned") + '</span></div></article>';
     }).join("") : "No tasks match this view.";
     var availableTasks = (state.data.tasks || []).filter(function (task) { return ["done","cancelled"].indexOf(task.status) < 0 && (!isDepartment() || task.department_id === currentDepartmentId()); });
     fillSelect(el("request-tasks"), availableTasks, { id: "id", label: "title" });
@@ -450,57 +536,81 @@
 
   function renderPlanner() {
     var requests = (state.data.session_requests || []).filter(function (request) { return request.status === "pending"; });
+    var groups = state.groups.groups || [];
+    var slots = isConference() ? [] : (state.data.time_slots || []).filter(function (slot) {
+      return !state.groups.holiday_mode || ["morning","afternoon"].indexOf(slot.code) >= 0;
+    });
+    el("group-capacity-cards").innerHTML = groups.map(function (group) {
+      return '<article class="summary-card"><div class="label">' + escapeHtml(group.label) + '</div><div class="value">' + Number(group.total || 0) + '</div><small>total available pool</small></article>';
+    }).join("");
     el("planner-board").classList.toggle("empty-state", !requests.length);
     el("planner-board").innerHTML = requests.length ? requests.map(function (request) {
       var department = departmentById(request.department_id);
-      var slot = slotById(request.slot_id);
-      return '<article class="planner-card ' + (request.request_kind === "unexpected" ? "warning" : "") + '" data-request="' + request.id + '"><div class="card-top"><div><h3>' + escapeHtml(department ? department.name : "Department") + '</h3><p>' + escapeHtml(formatDate(request.work_date)) + " · " + escapeHtml(slot ? slot.name : "Session") + " · " + escapeHtml(titleCase(request.request_kind || "planned")) + '</p></div><span class="count-badge">' + request.requested_headcount + '</span></div><p>' + escapeHtml(request.request_notes || "No note supplied.") + '</p><div class="allocate-row"><label>Approve or edit total<input class="planner-allocation" type="number" min="1" max="100" value="' + request.requested_headcount + '"></label><label class="check-row"><input class="planner-publish" type="checkbox" checked> Publish</label><textarea class="planner-notes" rows="2" placeholder="Decision note"></textarea><button class="button primary planner-approve" type="button">Approve</button><button class="button danger planner-decline" type="button">Decline</button></div></article>';
+      var task = (request.task_ids || []).map(taskById).filter(Boolean)[0];
+      var metadata = task && task.metadata && typeof task.metadata === "object" ? task.metadata : {};
+      var memberCounts = departmentGroupCounts(request.department_id);
+      var slotOptions = '<option value="">Choose session</option>' + slots.map(function (slot) {
+        return '<option value="' + escapeHtml(slot.id) + '" data-code="' + escapeHtml(slot.code) + '">' + escapeHtml(slot.name) + '</option>';
+      }).join("");
+      var groupInputs = groups.map(function (group) {
+        return '<label>' + escapeHtml(group.label) + '<input class="planner-group" data-group="' + escapeHtml(group.code) + '" type="number" min="0" max="' + Number(group.total || 0) + '" value="' + Number(memberCounts[group.code] || 0) + '"><small class="group-remaining" data-group-remaining="' + escapeHtml(group.code) + '">' + Number(group.total || 0) + ' remaining before this plan</small></label>';
+      }).join("");
+      return '<article class="planner-card ' + (request.request_kind === "unexpected" ? "warning" : "") + '" data-request="' + request.id + '" data-work-date="' + escapeHtml(request.work_date) + '" data-department="' + escapeHtml(request.department_id) + '"><div class="card-top"><div><h3>' + escapeHtml(task ? task.title : department ? department.name : "Department task") + '</h3><p>' + escapeHtml(department ? department.name : "Department") + ' · requested for ' + escapeHtml(formatDate(request.work_date)) + ' · ' + escapeHtml(titleCase(request.request_kind || "planned")) + '</p></div><span class="count-badge">' + request.requested_headcount + ' requested</span></div>' + (request.request_notes ? '<p>' + escapeHtml(request.request_notes) + '</p>' : '') + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="inline-plan-grid"><label>Work day<input class="planner-work-date" type="date" min="' + today() + '" max="' + addDays(today(), 120) + '" value="' + escapeHtml(request.work_date) + '" required></label><label>Session<select class="planner-slot" required>' + slotOptions + '</select></label><label>Approved total<input class="planner-allocation" type="number" min="1" max="100" value="' + request.requested_headcount + '"></label></div><fieldset class="cohort-fieldset planner-cohorts"><legend>Allocate the approved total</legend>' + groupInputs + '</fieldset><label>Decision note<textarea class="planner-notes" rows="2" placeholder="Optional note for the department"></textarea></label><div class="allocation-check">The four groups must add up to <strong>' + request.requested_headcount + '</strong>.</div><div class="card-actions"><button class="button primary planner-approve" type="button">Approve and publish</button><button class="button danger planner-decline" type="button">Decline</button></div></article>';
     }).join("") : "No pending requests.";
+    all(".planner-card", el("planner-board")).forEach(updatePlannerCardAvailability);
   }
 
-  function renderAssignmentControls() {
-    var sessions = (state.data.work_sessions || []).filter(function (session) { return session.status !== "cancelled" && session.work_date >= today(); });
-    var previous = el("assignment-session").value;
-    el("assignment-session").innerHTML = '<option value="">Choose a session</option>' + sessions.map(function (session) {
-      var department = departmentById(session.department_id);
-      var slot = slotById(session.slot_id);
-      return '<option value="' + session.id + '">' + escapeHtml(formatDate(session.work_date) + " · " + (slot ? slot.name : "Session") + " · " + (department ? department.name : "Department") + " · " + session.allocated_headcount + " places") + "</option>";
-    }).join("");
-    if (sessions.some(function (session) { return session.id === previous; })) el("assignment-session").value = previous;
-    renderGroupAssignments();
+  function standingReserved(groupCode, workDate, slotCode, currentDepartmentId) {
+    var day = new Date(workDate + "T12:00:00").getDay() || 7;
+    return (state.planning.standing_rules || []).filter(function (rule) {
+      return rule.active && rule.department_id !== currentDepartmentId
+        && (rule.days_of_week || []).map(Number).indexOf(day) >= 0
+        && (!(rule.slot_codes || []).length || (rule.slot_codes || []).indexOf(slotCode) >= 0);
+    }).reduce(function (sum, rule) {
+      return sum + Number(departmentGroupCounts(rule.department_id)[groupCode] || 0);
+    }, 0);
   }
 
-  function groupInputId(code) { return "group-" + code.replace(/_/g, "-"); }
-
-  function groupAvailableForSession(group, session) {
-    var usedElsewhere = (state.groups.allocations || []).filter(function (allocation) {
-      return allocation.group_code === group.code && allocation.session_id !== session.id &&
-        allocation.work_date === session.work_date && allocation.slot_id === session.slot_id;
-    }).reduce(function (sum, allocation) { return sum + Number(allocation.headcount || 0); }, 0);
-    return Math.max(0, Number(group.total || 0) - usedElsewhere);
-  }
-
-  function renderGroupAssignments() {
-    var sessionId = value("assignment-session");
-    var groups = state.groups.groups || [];
-    el("group-capacity-cards").innerHTML = groups.map(function (group) {
-      return '<article class="summary-card"><div class="label">' + escapeHtml(group.label) + '</div><div class="value">' + Number(group.total || 0) + '</div><small>available now</small></article>';
-    }).join("");
-    if (!sessionId) {
-      groups.forEach(function (group) { var input = el(groupInputId(group.code)); if (input) input.value = "0"; });
-      el("group-session-capacity").textContent = "Choose a published session to see availability for that date and slot.";
-      return;
-    }
-    var session = sessionById(sessionId);
-    var existing = state.groups.allocations || [];
-    groups.forEach(function (group) {
-      var allocation = existing.find(function (item) { return item.session_id === sessionId && item.group_code === group.code; });
-      var input = el(groupInputId(group.code));
-      if (input) { input.value = allocation ? allocation.headcount : 0; input.max = groupAvailableForSession(group, session); }
+  function updatePlannerCardAvailability(card) {
+    if (!card) return;
+    var slotSelect = card.querySelector(".planner-slot");
+    var selected = slotSelect && slotSelect.options[slotSelect.selectedIndex];
+    var slotId = slotSelect ? slotSelect.value : "";
+    var slotCode = selected && selected.dataset.code || "";
+    var approved = Number(card.querySelector(".planner-allocation").value || 0);
+    var sum = 0;
+    all(".planner-group", card).forEach(function (input) {
+      var group = (state.groups.groups || []).find(function (item) { return item.code === input.dataset.group; }) || {};
+      var allocated = slotId ? (state.groups.allocations || []).filter(function (item) {
+        return item.group_code === input.dataset.group && item.work_date === card.dataset.workDate && item.slot_id === slotId;
+      }).reduce(function (total, item) { return total + Number(item.headcount || 0); }, 0) : 0;
+      var reserved = slotCode ? standingReserved(input.dataset.group, card.dataset.workDate, slotCode, card.dataset.department) : 0;
+      var remaining = Math.max(0, Number(group.total || 0) - allocated - reserved);
+      input.max = String(remaining);
+      var note = card.querySelector('[data-group-remaining="' + input.dataset.group + '"]');
+      if (note) note.textContent = slotId ? remaining + " remaining for this session" : Number(group.total || 0) + " in the available pool";
+      sum += Number(input.value || 0);
     });
-    el("group-session-capacity").innerHTML = '<strong>' + session.allocated_headcount + ' approved places.</strong> ' + groups.map(function (group) {
-      return escapeHtml(group.label) + ': ' + groupAvailableForSession(group, session) + ' available';
-    }).join(' · ');
+    var check = card.querySelector(".allocation-check");
+    if (check) {
+      check.classList.toggle("invalid", sum !== approved);
+      check.innerHTML = 'Groups total <strong>' + sum + '</strong> of <strong>' + approved + '</strong> approved.';
+    }
+  }
+
+  function renderStandingDepartments() {
+    var rules = state.planning.standing_rules || [];
+    var configured = {};
+    (state.planning.department_group_counts || []).forEach(function (item) { configured[item.department_id] = true; });
+    var ids = Object.keys(configured);
+    rules.forEach(function (rule) { if (ids.indexOf(rule.department_id) < 0) ids.push(rule.department_id); });
+    el("standing-department-list").classList.toggle("empty-state", !ids.length);
+    el("standing-department-list").innerHTML = ids.length ? ids.map(function (id) {
+      var department = departmentById(id), rule = rules.find(function (item) { return item.department_id === id; }) || {};
+      var total = Object.keys(departmentGroupCounts(id)).reduce(function (sum, code) { return sum + Number(departmentGroupCounts(id)[code] || 0); }, 0);
+      var schedule = rule.active ? ((rule.days_of_week || []).length === 7 ? "Every day" : (rule.days_of_week || []).length + " selected day(s)") + " · " + ((rule.slot_codes || []).length ? (rule.slot_codes || []).map(titleCase).join(", ") : "every session") : "Not always on";
+      return '<button type="button" class="compact-row standing-edit" data-department="' + escapeHtml(id) + '"><span><strong>' + escapeHtml(department ? department.name : "Department") + '</strong><small>' + total + ' department members · ' + escapeHtml(schedule) + '</small></span><span class="button quiet">Edit</span></button>';
+    }).join("") : "No department member counts have been entered yet.";
   }
 
   function renderReports() {
@@ -513,7 +623,7 @@
     el("report-review-list").classList.toggle("empty-state", !reports.length);
     el("report-review-list").innerHTML = reports.length ? reports.map(function (report) {
       var actions = [];
-      if (["submitted"].indexOf(report.status) >= 0 && ["student_leadership","management","administrator"].indexOf(state.session.role) >= 0) actions.push('<button class="button secondary report-transition" data-id="' + report.id + '" data-status="verified">Verify</button>');
+      if (["submitted"].indexOf(report.status) >= 0 && ["management","administrator"].indexOf(state.session.role) >= 0) actions.push('<button class="button secondary report-transition" data-id="' + report.id + '" data-status="verified">Verify</button>');
       if (report.status === "verified" && isManagement()) actions.push('<button class="button primary report-transition" data-id="' + report.id + '" data-status="approved">Approve and queue Jira</button>');
       if (["submitted","verified"].indexOf(report.status) >= 0) actions.push('<button class="button quiet report-transition" data-id="' + report.id + '" data-status="returned">Return</button>');
       if (report.status === "approved" && isManagement()) actions.push('<button class="button secondary report-transition" data-id="' + report.id + '" data-status="locked">Lock</button>');
@@ -547,7 +657,7 @@
       workflow: [["Work planning","Plan the department's actual workload."],["Resources","Track the stock and equipment the department uses."],["Operational record","Keep dated records for reporting and follow-up."]]
     };
     var profiles = {
-      "it-department": { eyebrow:"IT operations",title:"IT service desk and assets",description:"Manage technology work, devices, network issues, repairs and service history.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT service and assets"},workflow:[["Service desk","Record faults, fixes and follow-up work."],["Devices and parts","Track equipment, spares and consumables."],["Network and systems","Plan checks, installations and maintenance."]]},
+      "it-department": { eyebrow:"IT operations",title:"IT service desk, assets and secure access",description:"Manage technology work, devices, network issues and repairs, with secure links to the school asset register and password vault.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT tools and service"},externalTools:[{label:"Open AssetTiger",url:"https://www.assettiger.com/",description:"School asset register"},{label:"Open password vault",url:"https://vault.bitwarden.com/",description:"Bitwarden secure vault"}],workflow:[["Service desk","Record faults, fixes and follow-up work."],["Asset register","Open AssetTiger for the authoritative device and equipment record."],["Passwords and access","Open Bitwarden for shared credentials. Passwords are never stored in this site."]]},
       "husbandry": { eyebrow:"Animal husbandry",title:"Animal care and production",description:"Plan animal care, manage feed and supplies, and record health, production and losses.",plan:"Plan animal care",planTypeLabel:"Care plan type",planTypePlaceholder:"Routine, health, breeding or facility work",planTitleLabel:"Animal group or work",planTitlePlaceholder:"Describe the care plan",stock:"Add feed or husbandry supply",stockNameLabel:"Feed, medicine or supply",stockCategoryLabel:"Supply category",stockCategoryPlaceholder:"Enter the husbandry category",stockUnitPlaceholder:"kg, bag, bottle, item",log:"Record animal care or production",logTypeLabel:"Husbandry record type",logTypePlaceholder:"Feeding, health, breeding, production or loss",logTitleLabel:"Animal group or event",quantityLabel:"Animals or output",nav:{tasks:"Animal care work",tools:"Animal care and feed"},workflow:[["Daily animal care","Plan routine care and facility work."],["Feed and supplies","Track quantities received, used and remaining."],["Health and production","Record checks, treatment, output and losses."]]},
       "horticulture": { eyebrow:"Horticulture operations",title:"Open Field and Greenhouses",description:"One Horticulture workspace for crop planning, inputs, harvests and two separate reporting sections.",plan:"Plan crop work",planTypeLabel:"Crop plan type",planTypePlaceholder:"Planting, watering, crop care or harvest",planTitleLabel:"Crop, field or greenhouse",planTitlePlaceholder:"Describe the crop plan",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Input category",stockCategoryPlaceholder:"Enter the horticulture category",stockUnitPlaceholder:"kg, litre, tray, packet, item",log:"Record crop or harvest activity",logTypeLabel:"Crop record type",logTypePlaceholder:"Planting, watering, treatment, harvest or loss",logTitleLabel:"Crop and section",quantityLabel:"Area or output",nav:{tasks:"Crop work",requests:"Request field support","daily-report":"Section report","period-report":"Section summaries",tools:"Crops, inputs and harvests"},workflow:[["Open Field","Plan field work and submit its report separately."],["Greenhouses","Manage Greenhouses 1, 2 and 3 and submit one Greenhouses report."],["Inputs and harvests","Track seed, materials, treatments, output and losses."]]},
       "maintenance": { eyebrow:"Maintenance operations",title:"Faults, repairs and preventive work",description:"Run the maintenance job queue, manage parts and tools, and record repair history.",plan:"Plan maintenance jobs",planTypeLabel:"Maintenance type",planTypePlaceholder:"Fault, repair, inspection or preventive work",planTitleLabel:"Asset or location",planTitlePlaceholder:"What needs maintenance?",stock:"Add spare, material or tool",stockNameLabel:"Part, material or tool",stockCategoryLabel:"Maintenance category",stockCategoryPlaceholder:"Enter the maintenance category",stockUnitPlaceholder:"item, metre, litre, box",log:"Record job progress or equipment work",logTypeLabel:"Maintenance record type",logTypePlaceholder:"Inspection, repair, servicing or completion",logTitleLabel:"Asset, location or job",quantityLabel:"Items or hours",nav:{tasks:"Maintenance jobs",requests:"Request work crew",tools:"Repairs, spares and tools"},workflow:[["Fault queue","Turn faults into trackable repair jobs."],["Preventive work","Plan inspections and regular servicing."],["Spares and tools","Track parts, materials, equipment and usage."]]},
@@ -616,7 +726,10 @@
       return '<article class="workflow-card"><h3>' + escapeHtml(item[0]) + '</h3><p>' + escapeHtml(item[1]) + '</p></article>';
     }).join("");
     var serviceLink = tools.department_slug === "kitchen" ? '<button class="button primary" type="button" data-open-view="meal-service">Meal check-in</button>' : tools.department_slug === "clinic" ? '<button class="button primary" type="button" data-open-view="clinic-service">Clinic register</button>' : "";
-    el("tool-quick-links").innerHTML = serviceLink + '<a class="button secondary" href="#tool-plan-form">Planning</a><a class="button secondary" href="#tool-stock-item-form">Stock and usage</a><a class="button secondary" href="#tool-log-form">Activity records</a>';
+    var externalLinks = (profile.externalTools || []).filter(function (tool) { return /^https:\/\//i.test(tool.url || ""); }).map(function (tool) {
+      return '<a class="button primary" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(tool.description || tool.label) + '">' + escapeHtml(tool.label) + '</a>';
+    }).join("");
+    el("tool-quick-links").innerHTML = externalLinks + serviceLink + '<a class="button secondary" href="#tool-plan-form">Planning</a><a class="button secondary" href="#tool-stock-item-form">Stock and usage</a><a class="button secondary" href="#tool-log-form">Activity records</a>';
 
     var items = tools.stock_items || [];
     fillSelect(el("tool-stock-item"), items, { id: "id", label: "item_name", first: items.length ? "Choose item" : "Add an item first" });
@@ -821,17 +934,36 @@
     });
   }
 
+  function serviceStudentRecord(person) {
+    return serviceStudentByRegistration(person && person.registration_number) || person || {};
+  }
+
+  function serviceGenderMatches(person, filter) {
+    if (!filter || filter === "ALL") return true;
+    return String(serviceStudentRecord(person).gender || "").toUpperCase() === String(filter).toUpperCase();
+  }
+
+  function serviceCampusStatusMatches(person, filter) {
+    if (!filter || filter === "ALL") return true;
+    return String(serviceStudentRecord(person).status || "UNKNOWN").toUpperCase() === String(filter).toUpperCase();
+  }
+
+  function servicePersonMatches(person, gender, year, campusStatus) {
+    var record = serviceStudentRecord(person);
+    return serviceGenderMatches(record, gender) && serviceYearMatches(record.registration_number, year) && serviceCampusStatusMatches(record, campusStatus);
+  }
+
   async function loadStudentServices() {
     if (!state.session || isDepartment()) return;
     var bridge = studentBridgePin();
     var result;
     if (state.session.role === "administrator") {
-      result = await rpc("admin_services_dashboard_v2", {
+      result = await rpc("admin_services_dashboard_v3", {
         p_pin: bridge,
         p_term_id: state.studentTermId ? Number(state.studentTermId) : null
       });
     } else {
-      result = await rpc("student_services_dashboard_v3", { p_pin: bridge });
+      result = await rpc("student_services_dashboard_v4", { p_pin: bridge });
     }
     if (!result || result.status !== "success") throw new Error(result && result.message || "Student services could not be loaded.");
     state.studentServices = result;
@@ -878,10 +1010,10 @@
   }
 
   function renderStudentCampus() {
-    var data = state.studentServices || {}, q = value("ss-campus-search").toLowerCase(), filter = value("ss-campus-filter"), year = value("ss-campus-year");
+    var data = state.studentServices || {}, q = value("ss-campus-search").toLowerCase(), filter = value("ss-campus-filter"), gender = value("ss-campus-gender"), year = value("ss-campus-year");
     var rows = (data.students || []).filter(function (student) {
       var statusMatch = filter === "ALL" || filter === student.status || filter === "BED_REST" && student.bed_rest;
-      return statusMatch && serviceYearMatches(student.registration_number, year) && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
+      return statusMatch && servicePersonMatches(student, gender, year, "ALL") && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
     });
     el("ss-campus-rows").innerHTML = rows.length ? rows.map(function (student) {
       var health = [];
@@ -892,11 +1024,11 @@
   }
 
   function renderStudentAccommodation() {
-    var data = state.studentServices || {}, admin = state.session.role === "administrator", q = value("ss-accommodation-search").toLowerCase(), filter = value("ss-accommodation-filter"), year = value("ss-accommodation-year");
+    var data = state.studentServices || {}, admin = state.session.role === "administrator", q = value("ss-accommodation-search").toLowerCase(), filter = value("ss-accommodation-filter"), gender = value("ss-accommodation-gender"), year = value("ss-accommodation-year"), campus = value("ss-accommodation-campus");
     var rows = (data.students || []).filter(function (student) {
       var statusMatch = filter === "ALL" || filter === "ALLOCATED" && student.residence || filter === "NOT_ALLOCATED" && !student.residence || filter === "BED_REST" && student.bed_rest;
       var hay = [student.student_name, student.registration_number, student.residence, student.room].join(" ").toLowerCase();
-      return statusMatch && serviceYearMatches(student.registration_number, year) && hay.indexOf(q) >= 0;
+      return statusMatch && servicePersonMatches(student, gender, year, campus) && hay.indexOf(q) >= 0;
     });
     el("ss-accommodation-rows").innerHTML = rows.length ? rows.map(function (student) {
       var feeCell = admin ? '<td><span class="service-pill ' + (student.fees_paid === false ? "unpaid" : "paid") + '">' + (student.fees_paid === false ? "Not paid" : "Paid") + "</span></td>" : "";
@@ -905,13 +1037,13 @@
   }
 
   function renderStudentPasses() {
-    var data = state.studentServices || {}, q = value("ss-pass-search").toLowerCase(), filter = value("ss-pass-filter"), year = value("ss-pass-year");
+    var data = state.studentServices || {}, q = value("ss-pass-search").toLowerCase(), filter = value("ss-pass-filter"), gender = value("ss-pass-gender"), year = value("ss-pass-year"), campus = value("ss-pass-campus");
     var rows = (data.gate_passes || []).filter(function (pass) {
       var statusMatch = filter === "ALL" || filter === "OVERDUE" && pass.overdue || pass.status === filter;
       var people = servicePassPeople(pass);
-      var yearMatch = year === "ALL" || people.some(function (person) { return serviceYearMatches(person.registration_number, year); });
+      var personMatch = people.some(function (person) { return servicePersonMatches(person, gender, year, campus); });
       var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
-      return statusMatch && yearMatch && hay.toLowerCase().indexOf(q) >= 0;
+      return statusMatch && personMatch && hay.toLowerCase().indexOf(q) >= 0;
     });
     el("ss-pass-permission-note").textContent = isLeadership() ? "Student Leadership can view all people and decisions on a pass. Approval remains view only." : state.session.role === "administrator" ? "School Administration can amend departure and return times and make the Administrator decision." : "Management can record a Principal, Dean, or Director decision.";
     el("ss-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
@@ -930,10 +1062,10 @@
     el("ss-fee-summary").innerHTML = [[summary.paid || 0,"Paid",false],[summary.unpaid || 0,"Not paid",Number(summary.unpaid || 0)>0],[summary.total || 0,"Students",false]].map(function (card) {
       return '<article class="summary-card' + (card[2] ? " alert" : "") + '"><div class="label">' + card[1] + '</div><div class="value">' + card[0] + "</div></article>";
     }).join("");
-    var q = value("ss-fee-search").toLowerCase(), filter = value("ss-fee-filter"), year = value("ss-fee-year");
+    var q = value("ss-fee-search").toLowerCase(), filter = value("ss-fee-filter"), gender = value("ss-fee-gender"), year = value("ss-fee-year"), campus = value("ss-fee-campus");
     var rows = (data.students || []).filter(function (student) {
       var statusMatch = filter === "ALL" || filter === "PAID" && student.fees_paid !== false || filter === "UNPAID" && student.fees_paid === false;
-      return statusMatch && serviceYearMatches(student.registration_number, year) && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
+      return statusMatch && servicePersonMatches(student, gender, year, campus) && (student.student_name + " " + student.registration_number).toLowerCase().indexOf(q) >= 0;
     });
     el("ss-fee-rows").innerHTML = rows.length ? rows.map(function (student) {
       var paid = student.fees_paid !== false;
@@ -942,16 +1074,16 @@
   }
 
   function renderStudentDuty() {
-    var data = state.studentServices || {}, q = value("ss-duty-search").toLowerCase(), year = value("ss-duty-year");
-    var rows = (data.gate_duty_today || []).filter(function (row) { return serviceYearMatches(row.registration_number, year) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
+    var data = state.studentServices || {}, q = value("ss-duty-search").toLowerCase(), gender = value("ss-duty-gender"), year = value("ss-duty-year"), campus = value("ss-duty-campus");
+    var rows = (data.gate_duty_today || []).filter(function (row) { return servicePersonMatches(row, gender, year, campus) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
     el("ss-duty-rows").innerHTML = rows.length ? rows.map(function (row) {
       return '<tr><td>' + escapeHtml(formatDateTime(row.scanned_at)) + '</td><td>' + serviceStudentName(row) + '</td><td>' + escapeHtml(row.registration_number) + '</td><td><span class="service-pill ' + escapeHtml(row.direction) + '">' + escapeHtml(row.direction) + '</span></td><td>' + escapeHtml(row.source || row.record_source || "Recorded") + "</td></tr>";
     }).join("") : '<tr><td colspan="5" class="empty-state">No gate-duty records today.</td></tr>';
   }
 
   function renderStudentRecent() {
-    var data = state.studentServices || {}, q = value("ss-recent-search").toLowerCase(), year = value("ss-recent-year");
-    var rows = (data.recent_movements || []).filter(function (row) { return serviceYearMatches(row.registration_number, year) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
+    var data = state.studentServices || {}, q = value("ss-recent-search").toLowerCase(), gender = value("ss-recent-gender"), year = value("ss-recent-year"), campus = value("ss-recent-campus");
+    var rows = (data.recent_movements || []).filter(function (row) { return servicePersonMatches(row, gender, year, campus) && (row.student_name + " " + row.registration_number).toLowerCase().indexOf(q) >= 0; });
     el("ss-recent-rows").innerHTML = rows.length ? rows.map(function (row) {
       return '<tr><td>' + escapeHtml(formatDateTime(row.scanned_at)) + '</td><td>' + serviceStudentName(row) + '</td><td>' + escapeHtml(row.registration_number) + '</td><td><span class="service-pill ' + escapeHtml(row.direction) + '">' + escapeHtml(row.direction) + '</span></td><td>' + escapeHtml(row.gate_pass_id ? "Approved pass" : row.checkout_destination_label || "Not linked") + "</td></tr>";
     }).join("") : '<tr><td colspan="5" class="empty-state">No recent campus movements.</td></tr>';
@@ -1088,6 +1220,7 @@
       result = await rpc("dashboard_gate_pass_decision", { p_pin: studentBridgePin(), p_pass_id: state.passReview.id, p_actor_role: value("ss-senior-role"), p_decision: decision, p_comments: comments || null });
     }
     if (result.status !== "success") throw new Error(result.message || "The gate-pass decision was not saved.");
+    dispatchPassEmail();
     closeStudentPass();
     await loadStudentServices();
     renderStudentServices();
@@ -1206,10 +1339,13 @@
     renderOverviewSessions();
     renderNotifications();
     renderAttention();
+    renderDutyRoster();
+    renderReportsAttention();
     renderTasks();
+    renderDepartmentMemberSummary();
     renderRequests();
     renderPlanner();
-    renderAssignmentControls();
+    renderStandingDepartments();
     renderReports();
     renderTransfers();
     renderTools();
@@ -1236,39 +1372,49 @@
     if (view === "clinic-service") refreshClinic().catch(function (error) { toast(error.message, true); });
   }
 
-  function resetTaskForm() {
-    el("task-form").reset();
-    el("task-id").value = "";
-    el("task-department").value = currentDepartmentId() || "";
-    el("task-external-allowed").checked = true;
-    if (isConference()) {
-      el("task-type").value = "emergency";
-      el("task-priority").value = "critical";
-    } else {
-      el("task-type").value = "ad_hoc";
-      el("task-priority").value = "medium";
+  function openTarget(button) {
+    if (!button) return;
+    switchView(button.dataset.openView);
+    var target = button.dataset.openTarget || "";
+    if (target.indexOf("campus:") === 0) {
+      activateStudentServicesTab("campus");
+      el("ss-campus-filter").value = target.split(":")[1];
+      renderStudentCampus();
+    } else if (target.indexOf("passes:") === 0) {
+      activateStudentServicesTab("passes");
+      el("ss-pass-filter").value = target.split(":")[1];
+      renderStudentPasses();
     }
-    el("task-form").hidden = true;
+    if (button.dataset.openTaskSection === "duty") {
+      el("duty-roster-panel").open = true;
+      el("duty-roster-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
-  function editTask(id) {
-    var task = taskById(id);
-    if (!task) return;
-    el("task-id").value = task.id;
-    el("task-department").value = task.department_id;
-    el("task-title").value = task.title || "";
-    el("task-description").value = task.description || "";
-    el("task-type").value = isConference() ? "emergency" : task.task_type;
-    el("task-cadence").value = task.cadence;
-    el("task-priority").value = isConference() ? "critical" : task.priority;
-    el("task-status").value = task.status;
-    el("task-due-date").value = task.due_date || "";
-    el("task-people").value = task.requested_people || 0;
-    el("task-owner").value = task.owner_name || "";
-    el("task-actor").value = "";
-    el("task-external-allowed").checked = task.external_people_allowed !== false;
-    el("task-form").hidden = false;
-    el("task-title").focus();
+  function populateDutyForm(weekStart) {
+    var duty = (state.planning.duties || []).find(function (item) { return item.week_start === weekStart; }) || {};
+    el("duty-week-start").value = weekStart || mondayFor(today());
+    el("duty-prefect").value = duty.prefect_on_duty || "";
+    el("duty-senior-prefect").value = duty.senior_prefect_on_duty || "";
+    el("duty-notes").value = duty.notes || "";
+    el("duty-roster-panel").open = true;
+  }
+
+  function populateStandingForm(departmentId) {
+    var counts = departmentGroupCounts(departmentId);
+    var rule = (state.planning.standing_rules || []).find(function (item) { return item.department_id === departmentId; }) || {};
+    el("standing-department").value = departmentId || "";
+    ["year1_men","year1_ladies","year2_men","year2_ladies"].forEach(function (code) {
+      el("standing-" + code.replace(/_/g, "-")).value = Number(counts[code] || 0);
+    });
+    el("standing-active").checked = !!rule.active;
+    all('input[name="standing-day"]', el("standing-department-form")).forEach(function (input) {
+      input.checked = !(rule.days_of_week || []).length || (rule.days_of_week || []).map(Number).indexOf(Number(input.value)) >= 0;
+    });
+    all('input[name="standing-slot"]', el("standing-department-form")).forEach(function (input) {
+      input.checked = (rule.slot_codes || []).indexOf(input.value) >= 0;
+    });
+    el("standing-departments-panel").open = true;
   }
 
   async function command(action, payload) {
@@ -1412,7 +1558,7 @@
     el("refresh-button").addEventListener("click", function () { loadData(true).catch(function (error) { toast(error.message, true); }); });
     el("range-from").addEventListener("change", function () { loadData(false).catch(function (error) { toast(error.message, true); }); });
     el("main-nav").addEventListener("click", function (event) { var button = event.target.closest("button[data-view]"); if (button) switchView(button.dataset.view); });
-    el("app-shell").addEventListener("click", function (event) { var button = event.target.closest("[data-open-view]"); if (button) switchView(button.dataset.openView); });
+    el("app-shell").addEventListener("click", function (event) { var button = event.target.closest("[data-open-view]"); if (button) openTarget(button); });
 
     el("student-services-tabs").addEventListener("click", function (event) {
       var button = event.target.closest("button[data-ss-tab]");
@@ -1424,12 +1570,12 @@
       catch (error) { toast(error.message, true); }
       finally { setBusy(this, false); }
     });
-    ["ss-campus-search","ss-campus-filter","ss-campus-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentCampus); });
-    ["ss-accommodation-search","ss-accommodation-filter","ss-accommodation-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentAccommodation); });
-    ["ss-pass-search","ss-pass-filter","ss-pass-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentPasses); });
-    ["ss-duty-search","ss-duty-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentDuty); });
-    ["ss-recent-search","ss-recent-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentRecent); });
-    ["ss-fee-search","ss-fee-filter","ss-fee-year"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentFees); });
+    ["ss-campus-search","ss-campus-gender","ss-campus-year","ss-campus-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentCampus); });
+    ["ss-accommodation-search","ss-accommodation-gender","ss-accommodation-year","ss-accommodation-campus","ss-accommodation-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentAccommodation); });
+    ["ss-pass-search","ss-pass-gender","ss-pass-year","ss-pass-campus","ss-pass-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentPasses); });
+    ["ss-duty-search","ss-duty-gender","ss-duty-year","ss-duty-campus"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentDuty); });
+    ["ss-recent-search","ss-recent-gender","ss-recent-year","ss-recent-campus"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentRecent); });
+    ["ss-fee-search","ss-fee-gender","ss-fee-year","ss-fee-campus","ss-fee-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentFees); });
 
     el("view-student-services").addEventListener("click", function (event) {
       var edit = event.target.closest(".ss-edit-student");
@@ -1483,31 +1629,109 @@
     el("ss-detail-export-form").addEventListener("submit", function (event) { event.preventDefault(); exportStudentDetail(event.currentTarget).catch(function (error) { toast(error.message, true); }); });
     el("ss-settings-form").addEventListener("submit", function (event) { event.preventDefault(); saveStudentServiceSettings(event.currentTarget).catch(function (error) { toast(error.message, true); }); });
 
-    el("new-task-button").addEventListener("click", function () { resetTaskForm(); el("task-form").hidden = false; el("task-title").focus(); });
-    el("cancel-task-button").addEventListener("click", resetTaskForm);
-    el("task-form").addEventListener("submit", async function (event) {
-      event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
-      var payload = { id: value("task-id") || null, department_id: isDepartment() ? currentDepartmentId() : value("task-department"), title: value("task-title"), description: value("task-description"), task_type: isConference() ? "emergency" : value("task-type"), cadence: value("task-cadence"), priority: isConference() ? "critical" : value("task-priority"), status: value("task-status"), due_date: value("task-due-date") || null, requested_people: parseNumber(value("task-people")) || 0, owner_name: value("task-owner"), actor_name: value("task-actor"), external_people_allowed: el("task-external-allowed").checked };
-      try { await command("save_task", payload); await rememberName(payload.actor_name, payload.department_id); resetTaskForm(); await loadData(false); toast("Task saved."); }
-      catch (error) { toast(error.message, true); }
+    el("work-priority").addEventListener("change", function () {
+      var crucial = isConference() || value("work-priority") === "crucial";
+      el("work-crucial-field").hidden = !crucial;
+      el("work-crucial-reason").required = crucial;
+    });
+    el("work-unexpected").addEventListener("change", function () {
+      if (this.checked) {
+        el("work-date").value = today();
+        el("work-date").min = today();
+        el("work-date").max = today();
+      } else {
+        el("work-date").min = addDays(today(), 1);
+        el("work-date").max = addDays(today(), 120);
+        if (el("work-date").value <= today()) el("work-date").value = addDays(today(), 1);
+      }
+    });
+    el("work-request-form").addEventListener("submit", async function (event) {
+      event.preventDefault(); setBusy(event.currentTarget, true, "Submitting...");
+      var payload = {
+        title: value("work-title"), description: value("work-description"), work_date: value("work-date"),
+        unexpected: el("work-unexpected").checked, priority: isConference() ? "crucial" : value("work-priority"),
+        crucial_reason: value("work-crucial-reason"), cadence: value("work-cadence"),
+        extra_people: parseNumber(value("work-extra-people")) || 0, actor_name: value("work-actor")
+      };
+      try {
+        var result = await rpc("ops_submit_work_request_v2", { p_session_token: state.session.session_token, p_payload: payload });
+        if (result.status !== "success") throw new Error(result.message || "The task could not be submitted.");
+        await rememberName(payload.actor_name, currentDepartmentId());
+        event.currentTarget.reset();
+        el("work-date").value = addDays(today(), 1);
+        el("work-date").min = addDays(today(), 1);
+        el("work-date").max = addDays(today(), 120);
+        el("work-crucial-field").hidden = true;
+        el("work-crucial-reason").required = false;
+        await loadData(false);
+        toast(result.conference_task_only ? "Emergency task saved." : "Task sent to Student Leadership.");
+      } catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
-    el("task-list").addEventListener("click", function (event) { var button = event.target.closest(".edit-task"); if (button) editTask(button.dataset.id); });
     el("task-filter").addEventListener("change", renderTasks);
     el("task-list-department").addEventListener("change", renderTasks);
 
-    el("request-form").addEventListener("submit", async function (event) {
-      event.preventDefault();
-      if (isConference()) { toast("Manual-work sessions are unavailable in Conference Mode. Add an Emergency task instead.", true); return; }
-      setBusy(event.currentTarget, true, "Sending...");
-      var taskIds = all("option:checked", el("request-tasks")).map(function (option) { return option.value; });
-      var payload = { department_id: isDepartment() ? currentDepartmentId() : value("request-department"), request_kind: value("request-kind"), work_date: value("request-date"), slot_id: value("request-slot"), requested_headcount: parseNumber(value("request-headcount")), task_ids: taskIds, request_notes: value("request-notes"), actor_name: value("request-actor") };
-      try { var result = await rpc("ops_submit_session_request", { p_session_token: state.session.session_token, p_payload: payload }); if (result.status !== "success") throw new Error(result.message || "Request could not be sent."); await rememberName(payload.actor_name, payload.department_id); event.currentTarget.reset(); el("request-date").value = addDays(today(), 1); await loadData(false); toast("Session request sent."); }
-      catch (error) { toast(error.message, true); }
+    el("export-task-list").addEventListener("click", function () {
+      try {
+        var departmentFilter = value("task-list-department"), filter = value("task-filter") || "open";
+        var rows = (state.data.tasks || []).filter(function (task) {
+          if (departmentFilter && task.department_id !== departmentFilter) return false;
+          if (filter === "open") return ["done","cancelled"].indexOf(task.status) < 0;
+          if (filter === "done") return task.status === "done";
+          if (filter === "blocked") return task.status === "blocked";
+          return true;
+        }).map(function (task) {
+          var metadata = task.metadata && typeof task.metadata === "object" ? task.metadata : {};
+          return {
+            department: departmentPath(task.department_id), task: task.title, description: task.description || "",
+            working_day: task.due_date || "", status: task.status, priority: isConference() ? "critical" : task.priority,
+            recurrence: task.cadence, department_members: metadata.department_member_count || 0,
+            extra_people: metadata.extra_people_requested || 0, total_people: task.requested_people || 0,
+            owner: task.owner_name || "", crucial_reason: metadata.crucial_reason || ""
+          };
+        });
+        downloadCsv(rows, "amfcc-task-list-" + today() + ".csv");
+      } catch (error) { toast(error.message, true); }
+    });
+
+    el("duty-roster-form").addEventListener("submit", async function (event) {
+      event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
+      try {
+        var result = await rpc("ops_save_weekly_duty", {
+          p_session_token: state.session.session_token, p_week_start: value("duty-week-start"),
+          p_prefect_on_duty: value("duty-prefect"), p_senior_prefect_on_duty: value("duty-senior-prefect"),
+          p_notes: value("duty-notes"), p_actor_name: value("duty-actor")
+        });
+        if (result.status !== "success") throw new Error(result.message || "The duty roster was not saved.");
+        await loadData(false); toast("Duty roster saved.");
+      } catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
-    el("request-kind").addEventListener("change", function () {
-      el("request-date").value = value("request-kind") === "unexpected" ? today() : addDays(today(), 1);
+    el("duty-roster-list").addEventListener("click", function (event) {
+      var button = event.target.closest(".duty-edit"); if (button) populateDutyForm(button.dataset.week);
+    });
+
+    el("standing-department").addEventListener("change", function () { if (this.value) populateStandingForm(this.value); });
+    el("standing-department-list").addEventListener("click", function (event) {
+      var button = event.target.closest(".standing-edit"); if (button) populateStandingForm(button.dataset.department);
+    });
+    el("standing-department-form").addEventListener("submit", async function (event) {
+      event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
+      var counts = ["year1_men","year1_ladies","year2_men","year2_ladies"].map(function (code) {
+        return { group_code: code, member_count: Number(value("standing-" + code.replace(/_/g, "-")) || 0) };
+      });
+      var days = all('input[name="standing-day"]:checked', event.currentTarget).map(function (input) { return Number(input.value); });
+      var slots = all('input[name="standing-slot"]:checked', event.currentTarget).map(function (input) { return input.value; });
+      try {
+        var result = await rpc("ops_save_department_planning", {
+          p_session_token: state.session.session_token, p_department_id: value("standing-department"),
+          p_group_counts: counts, p_active: el("standing-active").checked,
+          p_days_of_week: days, p_slot_codes: slots, p_actor_name: value("standing-actor")
+        });
+        if (result.status !== "success") throw new Error(result.message || "The department setup was not saved.");
+        await loadData(false); toast("Department setup saved.");
+      } catch (error) { toast(error.message, true); }
+      finally { setBusy(event.currentTarget, false); }
     });
 
     el("planner-board").addEventListener("click", async function (event) {
@@ -1515,19 +1739,30 @@
       var card = button.closest(".planner-card"); setBusy(button, true, "Saving...");
       try {
         if (!value("planner-actor")) throw new Error("Select or enter the person making this decision.");
-        await command("plan_session", { request_id: card.dataset.request, decision: button.classList.contains("planner-decline") ? "declined" : "approved", allocated_headcount: parseNumber(card.querySelector(".planner-allocation").value), publish: card.querySelector(".planner-publish").checked, decision_notes: card.querySelector(".planner-notes").value, actor_name: value("planner-actor") });
-        await loadData(false); toast("Session decision saved.");
+        var decline = button.classList.contains("planner-decline");
+        var allocations = all(".planner-group", card).map(function (input) { return { group_code: input.dataset.group, headcount: Number(input.value || 0) }; });
+        var result = await rpc("ops_plan_work_request_v2", {
+          p_session_token: state.session.session_token, p_request_id: card.dataset.request,
+          p_decision: decline ? "declined" : "approved", p_slot_id: decline ? null : card.querySelector(".planner-slot").value || null,
+          p_work_date: decline ? null : card.querySelector(".planner-work-date").value,
+          p_allocated_headcount: decline ? null : Number(card.querySelector(".planner-allocation").value || 0),
+          p_allocations: decline ? [] : allocations, p_notes: card.querySelector(".planner-notes").value,
+          p_actor_name: value("planner-actor")
+        });
+        if (result.status !== "success") throw new Error(result.message || "The allocation could not be saved.");
+        await loadData(false); toast(decline ? "Task declined." : "Task approved, allocated and published.");
       } catch (error) { toast(error.message, true); }
       finally { setBusy(button, false); }
     });
-
-    el("assignment-session").addEventListener("change", renderGroupAssignments);
-    el("assignment-form").addEventListener("submit", async function (event) {
-      event.preventDefault(); setBusy(event.currentTarget, true, "Publishing...");
-      var allocations = (state.groups.groups || []).map(function (group) { return { group_code: group.code, headcount: parseNumber(value(groupInputId(group.code))) || 0 }; });
-      try { var result = await rpc("ops_assign_groups", { p_session_token: state.session.session_token, p_session_id: value("assignment-session"), p_allocations: allocations, p_actor_name: value("assignment-actor") }); if (result.status !== "success") throw new Error(result.message || "Groups could not be assigned."); await loadData(false); toast("Group allocation published."); }
-      catch (error) { toast(error.message, true); }
-      finally { setBusy(event.currentTarget, false); }
+    el("planner-board").addEventListener("input", function (event) {
+      if (event.target.matches(".planner-group,.planner-allocation")) updatePlannerCardAvailability(event.target.closest(".planner-card"));
+    });
+    el("planner-board").addEventListener("change", function (event) {
+      if (event.target.matches(".planner-slot,.planner-work-date")) {
+        var card = event.target.closest(".planner-card");
+        if (event.target.matches(".planner-work-date")) card.dataset.workDate = event.target.value;
+        updatePlannerCardAvailability(card);
+      }
     });
 
     el("overview-sessions").addEventListener("click", async function (event) {
@@ -1537,6 +1772,7 @@
     });
     el("notification-list").addEventListener("click", async function (event) {
       var button = event.target.closest(".mark-read"); if (!button) return;
+      event.stopPropagation();
       try { await command("mark_notification_read", { notification_id: button.dataset.id }); await loadData(false); }
       catch (error) { toast(error.message, true); }
     });
@@ -1688,6 +1924,12 @@
   async function initialise() {
     el("range-from").value = today();
     el("request-date").value = addDays(today(), 1);
+    el("work-date").value = addDays(today(), 1);
+    el("work-date").min = addDays(today(), 1);
+    el("work-date").max = addDays(today(), 120);
+    el("duty-week-start").value = mondayFor(today());
+    el("duty-week-start").min = addDays(mondayFor(today()), -14);
+    el("duty-week-start").max = addDays(mondayFor(today()), 1825);
     el("daily-date").value = today();
     el("transfer-date").value = today();
     el("period-start").value = mondayFor(today());

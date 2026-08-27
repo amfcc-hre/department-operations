@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css?v=5">
+  <link rel="stylesheet" href="operations.css?v=7">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -66,19 +66,16 @@
     </div>
 
     <nav id="main-nav" class="tab-bar" aria-label="Workspace sections">
-      <button type="button" data-view="meal-service" data-roles="department,administrator" data-department-slug="kitchen">Meal service</button>
-      <button type="button" data-view="clinic-service" data-roles="department,administrator" data-department-slug="clinic">Clinic register</button>
+      <button type="button" data-view="meal-service" data-roles="department" data-department-slug="kitchen">Meal service</button>
+      <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="overview" class="active">Overview</button>
       <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
-      <button type="button" data-view="requests" data-roles="department,student_leadership,management,administrator">Sessions</button>
-      <button type="button" data-view="daily-report" data-roles="department,management,administrator">Daily report</button>
-      <button type="button" data-view="period-report" data-roles="department,management,administrator">Weekly / monthly</button>
-      <button type="button" data-view="tools" data-roles="department,management,administrator">Department tools</button>
-      <button type="button" data-view="transfers" data-roles="department,management,administrator">Transfers</button>
-      <button type="button" data-view="planner" data-roles="student_leadership,management,administrator">Planner</button>
-      <button type="button" data-view="assignments" data-roles="student_leadership,management,administrator">Groups</button>
+      <button type="button" data-view="daily-report" data-roles="department,management">Daily report</button>
+      <button type="button" data-view="period-report" data-roles="department,management">Weekly / monthly</button>
+      <button type="button" data-view="tools" data-roles="department,management">Department tools</button>
+      <button type="button" data-view="transfers" data-roles="department,management">Transfers</button>
       <button type="button" data-view="student-services" data-roles="student_leadership,management,administrator">Student services</button>
-      <button type="button" data-view="reports" data-roles="student_leadership,management,administrator">Review reports</button>
+      <button type="button" data-view="reports" data-roles="management,administrator">Review reports</button>
       <button type="button" data-view="access" data-roles="administrator">Department access</button>
     </nav>
 
@@ -143,7 +140,7 @@
         <div class="action-tile-grid">
           <button class="action-tile" type="button" data-open-view="tools"><strong>Medication and materials</strong><span>Track current stock, receipts, use and low-stock levels.</span></button>
           <button class="action-tile" type="button" data-open-view="daily-report"><strong>Clinic daily report</strong><span>Submit the operational report without exposing confidential notes.</span></button>
-          <button class="action-tile" type="button" data-open-view="requests"><strong>Request support</strong><span>Request a session only when unexpected Clinic work needs extra people.</span></button>
+          <button class="action-tile" type="button" data-open-view="tasks"><strong>Request support</strong><span>Submit the work and extra number needed. Student Leadership chooses the session.</span></button>
         </div>
       </article>
     </section>
@@ -154,46 +151,103 @@
           <p class="eyebrow">Right now</p>
           <h2 id="overview-heading">Work overview</h2>
         </div>
-        <label class="date-control">Show from <input id="range-from" type="date"></label>
+        <label id="overview-range-control" class="date-control">Show from <input id="range-from" type="date"></label>
       </div>
       <div id="summary-cards" class="summary-grid"></div>
-      <div class="two-column">
-        <article id="overview-session-panel" class="panel">
+      <div class="overview-grid">
+        <article id="overview-duty-panel" class="panel clickable-panel" data-roles="student_leadership,management,administrator" data-open-view="tasks" data-open-task-section="duty">
+          <div class="panel-heading"><h3>Leadership on duty this week</h3><button class="button quiet" type="button" data-open-view="tasks" data-open-task-section="duty">Update</button></div>
+          <div class="duty-now-grid">
+            <button class="duty-now-card" type="button" data-open-view="tasks" data-open-task-section="duty"><span>Prefect on Duty</span><strong id="overview-prefect-duty">Not entered</strong></button>
+            <button class="duty-now-card" type="button" data-open-view="tasks" data-open-task-section="duty"><span>Senior Prefect on Duty</span><strong id="overview-senior-duty">Not entered</strong></button>
+          </div>
+        </article>
+        <article id="overview-session-panel" class="panel" data-roles="department,management">
           <div class="panel-heading"><h3>Upcoming work sessions</h3><span id="session-count" class="count-badge">0</span></div>
           <div id="overview-sessions" class="card-list empty-state">No sessions published yet.</div>
         </article>
-        <article class="panel">
+        <article id="overview-notifications-panel" class="panel clickable-panel" data-open-view="tasks">
           <div class="panel-heading"><h3>Notifications</h3><span id="notification-count" class="count-badge">0</span></div>
           <div id="notification-list" class="card-list empty-state">No new notifications.</div>
         </article>
       </div>
-      <article class="panel">
+      <article id="overview-reports-panel" class="panel clickable-panel" data-roles="management,administrator" data-open-view="reports">
+        <div class="panel-heading"><h3>Reports needing attention</h3><span id="overview-report-count" class="count-badge">0</span></div>
+        <div id="overview-report-list" class="card-list empty-state">No reports need attention.</div>
+      </article>
+      <article id="overview-attention-panel" class="panel clickable-panel" data-open-view="tasks">
         <div class="panel-heading"><h3>Work needing attention</h3></div>
         <div id="attention-list" class="card-list empty-state">Nothing currently needs attention.</div>
+      </article>
+      <article class="panel asset-link-panel" data-roles="administrator">
+        <div><p class="eyebrow">Asset register</p><h3>AssetTiger</h3><p class="muted">Open the school asset register in a new tab.</p></div>
+        <a class="button secondary" href="https://www.assettiger.com/" target="_blank" rel="noopener noreferrer">Open AssetTiger</a>
       </article>
     </section>
 
     <section id="view-tasks" class="view" aria-labelledby="tasks-heading">
       <div class="view-heading">
-        <div><p class="eyebrow">Department workload</p><h2 id="tasks-heading">Tasks and jobs</h2></div>
-        <button id="new-task-button" class="button primary" type="button">Add task</button>
+        <div><p class="eyebrow">One place for work</p><h2 id="tasks-heading">Tasks and allocation</h2><p id="tasks-description" class="muted">Submit, plan and track work without choosing individual students.</p></div>
+        <button id="export-task-list" class="button secondary" type="button">Export task list</button>
       </div>
-      <form id="task-form" class="panel form-grid" hidden>
-        <input id="task-id" type="hidden">
-        <label class="admin-department-field">Department<select id="task-department"></select></label>
-        <label class="span-2">Task name<input id="task-title" maxlength="180" required></label>
-        <label class="span-2">What needs to be done<textarea id="task-description" rows="3"></textarea></label>
-        <label>Type<select id="task-type"><option value="ad_hoc">One-off task</option><option value="regular">Regular task</option><option value="project">Project task</option><option value="maintenance">Maintenance</option><option value="building">Building</option><option value="incident_follow_up">Incident follow-up</option><option value="emergency">Emergency</option></select></label>
-        <label>Cadence<select id="task-cadence"><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select></label>
-        <label>Priority<select id="task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
-        <label>Status<select id="task-status"><option value="backlog">Backlog</option><option value="ready">Ready</option><option value="requested">People requested</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></label>
-        <label>Due date<input id="task-due-date" type="date"></label>
-        <label>People normally needed<input id="task-people" type="number" min="0" max="100" value="0"></label>
-        <label>Owner<input id="task-owner" list="staff-name-options" placeholder="Select or type a name"></label>
-        <label>Recorded by<input id="task-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
-        <label class="check-row span-2"><input id="task-external-allowed" type="checkbox" checked> Student Leadership may assign people outside the department membership</label>
-        <div class="form-actions span-2"><button class="button primary" type="submit">Save task</button><button id="cancel-task-button" class="button quiet" type="button">Cancel</button></div>
+      <form id="work-request-form" class="panel form-grid simple-task-form" data-roles="department">
+        <div class="span-2 form-intro"><strong>Tell Student Leadership what needs doing.</strong><span>Choose the working day, not a session. Student Leadership will allocate the time and student groups.</span></div>
+        <label class="span-2">What work is needed?<input id="work-title" maxlength="180" required placeholder="Example: Weed the tomato beds"></label>
+        <label class="span-2">Instructions or notes<textarea id="work-description" rows="3" placeholder="Where is the work and what should be completed?"></textarea></label>
+        <label>Working day<input id="work-date" type="date" required></label>
+        <label class="check-row"><input id="work-unexpected" type="checkbox"> Unexpected task for today</label>
+        <label>Priority<select id="work-priority"><option value="normal">Normal</option><option value="important">Important</option><option value="crucial">Crucial</option></select></label>
+        <label id="work-crucial-field" class="span-2" hidden>Why is this crucial?<textarea id="work-crucial-reason" rows="2" placeholder="Explain what will happen if it is not done urgently"></textarea></label>
+        <label>Repeat<select id="work-cadence"><option value="once">Once only</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="monthly">Every month</option><option value="quarterly">Every quarter</option></select></label>
+        <label>Extra students needed<input id="work-extra-people" type="number" min="0" max="100" value="0"><span class="field-help">Do not include names. Your department members are counted automatically.</span></label>
+        <div id="department-member-summary" class="callout span-2">Department members: not configured yet. Student Leadership can enter the four cohort counts under Standing departments.</div>
+        <label>Submitted by<input id="work-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <div class="form-actions"><button class="button primary" type="submit">Submit task</button></div>
       </form>
+
+      <details id="duty-roster-panel" class="panel task-setup-panel" data-roles="student_leadership,management,administrator">
+        <summary><span><strong>Weekly leadership on duty</strong><small>Enter this week or any future week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
+        <form id="duty-roster-form" class="form-grid details-body">
+          <label>Week beginning Monday<input id="duty-week-start" type="date" required></label>
+          <label>Prefect on Duty<input id="duty-prefect" list="staff-name-options" required></label>
+          <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="staff-name-options" required></label>
+          <label>Note<input id="duty-notes" placeholder="Optional"></label>
+          <label>Entered by<input id="duty-actor" list="staff-name-options" required></label>
+          <div class="form-actions"><button class="button primary" type="submit">Save week</button></div>
+        </form>
+        <div id="duty-roster-list" class="compact-list details-body"></div>
+      </details>
+
+      <section id="leadership-planning" data-roles="student_leadership,management">
+        <div class="planning-toolbar panel">
+          <div><strong>Pending work</strong><span>Approve the number, choose the session and split the total across the four groups on the same card.</span></div>
+          <label>Planned by<input id="planner-actor" list="staff-name-options" placeholder="Select or type your name" required></label>
+        </div>
+        <div id="group-capacity-cards" class="summary-grid compact"></div>
+        <div id="planner-board" class="planner-grid empty-state">No pending tasks.</div>
+
+        <details id="standing-departments-panel" class="panel task-setup-panel">
+          <summary><span><strong>Standing departments</strong><small>Reserve department members every day or only in selected sessions.</small></span><span class="mini-summary">Set up once</span></summary>
+          <form id="standing-department-form" class="form-grid details-body">
+            <label class="span-2">Department<select id="standing-department" required></select></label>
+            <fieldset class="span-2 cohort-fieldset"><legend>Department members by group</legend>
+              <label>1st year men<input id="standing-year1-men" type="number" min="0" max="100" value="0"></label>
+              <label>1st year ladies<input id="standing-year1-ladies" type="number" min="0" max="100" value="0"></label>
+              <label>2nd year men<input id="standing-year2-men" type="number" min="0" max="100" value="0"></label>
+              <label>2nd year ladies<input id="standing-year2-ladies" type="number" min="0" max="100" value="0"></label>
+            </fieldset>
+            <label class="check-row span-2"><input id="standing-active" type="checkbox"> This department is always on for the selected days and sessions</label>
+            <fieldset class="span-2 choice-fieldset"><legend>Days</legend>
+              <label><input type="checkbox" name="standing-day" value="1" checked> Mon</label><label><input type="checkbox" name="standing-day" value="2" checked> Tue</label><label><input type="checkbox" name="standing-day" value="3" checked> Wed</label><label><input type="checkbox" name="standing-day" value="4" checked> Thu</label><label><input type="checkbox" name="standing-day" value="5" checked> Fri</label><label><input type="checkbox" name="standing-day" value="6" checked> Sat</label><label><input type="checkbox" name="standing-day" value="7" checked> Sun</label>
+            </fieldset>
+            <fieldset id="standing-slot-options" class="span-2 choice-fieldset"><legend>Sessions</legend><p class="field-help">Leave every session unticked to reserve the department for every session.</p></fieldset>
+            <label>Updated by<input id="standing-actor" list="staff-name-options" required></label>
+            <div class="form-actions"><button class="button primary" type="submit">Save department setup</button></div>
+          </form>
+          <div id="standing-department-list" class="compact-list details-body"></div>
+        </details>
+      </section>
+
       <div class="filter-row">
         <label>Status<select id="task-filter"><option value="open">Open tasks</option><option value="all">All tasks</option><option value="done">Completed</option><option value="blocked">Blocked</option></select></label>
         <label class="admin-department-field">Department<select id="task-list-department"><option value="">All departments</option></select></label>
@@ -347,27 +401,6 @@
       <div id="transfer-list" class="card-list empty-state">No transfers in this period.</div>
     </section>
 
-    <section id="view-planner" class="view" aria-labelledby="planner-heading">
-      <div class="view-heading"><div><p class="eyebrow">Student Leadership</p><h2 id="planner-heading">Weekly session planner</h2></div></div>
-      <div class="filter-row"><label>Planned by<input id="planner-actor" list="staff-name-options" placeholder="Select or type your name" required></label></div>
-      <div id="planner-board" class="planner-grid empty-state">No pending requests.</div>
-    </section>
-
-    <section id="view-assignments" class="view" aria-labelledby="assignments-heading">
-      <div class="view-heading"><div><p class="eyebrow">Student Leadership groups</p><h2 id="assignments-heading">Assign groups</h2><p class="muted">Departments request a total number. Student Leadership assigns cohort labels, not individual names.</p></div></div>
-      <div id="group-capacity-cards" class="summary-grid"></div>
-      <form id="assignment-form" class="panel form-grid">
-        <label class="span-2">Published session<select id="assignment-session" required></select></label>
-        <label>1st year men<input id="group-year1-men" type="number" min="0" value="0"></label>
-        <label>1st year ladies<input id="group-year1-ladies" type="number" min="0" value="0"></label>
-        <label>2nd year men<input id="group-year2-men" type="number" min="0" value="0"></label>
-        <label>2nd year ladies<input id="group-year2-ladies" type="number" min="0" value="0"></label>
-        <div id="group-session-capacity" class="callout span-2">Choose a published session to see availability for that date and slot.</div>
-        <label>Assigned by<input id="assignment-actor" list="staff-name-options" required></label>
-        <div class="form-actions"><button class="button primary" type="submit">Publish group allocation</button></div>
-      </form>
-    </section>
-
     <section id="view-student-services" class="view" aria-labelledby="student-services-heading">
       <div class="view-heading">
         <div>
@@ -395,8 +428,9 @@
         <div class="panel-heading"><div><h3>Campus status</h3><p>Student Leadership and School Administration can correct campus status and outing type.</p></div></div>
         <div class="service-toolbar">
           <input id="ss-campus-search" type="search" placeholder="Search student or registration">
-          <select id="ss-campus-filter"><option value="ALL">All statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option><option value="BED_REST">Allowed bed rest</option></select>
-          <select id="ss-campus-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+          <select id="ss-campus-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
+          <select id="ss-campus-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+          <select id="ss-campus-filter" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option><option value="BED_REST">Allowed bed rest</option></select>
         </div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Status</th><th>Health</th><th>Last movement</th><th>Action</th></tr></thead><tbody id="ss-campus-rows"></tbody></table></div>
       </section>
@@ -405,8 +439,10 @@
         <div class="panel-heading"><div><h3>Accommodation</h3><p>Basic allocation details only for Student Leadership. Fee details appear only for School Administration.</p></div></div>
         <div class="service-toolbar">
           <input id="ss-accommodation-search" type="search" placeholder="Search student, residence, or room">
+          <select id="ss-accommodation-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
+          <select id="ss-accommodation-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+          <select id="ss-accommodation-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select>
           <select id="ss-accommodation-filter"><option value="ALL">All allocations</option><option value="ALLOCATED">Allocated</option><option value="NOT_ALLOCATED">Not allocated</option><option value="BED_REST">Allowed bed rest</option></select>
-          <select id="ss-accommodation-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
         </div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Residence</th><th>Room</th><th>Bed</th><th id="ss-accommodation-fees-heading">Fees</th><th>Status</th><th>Action</th></tr></thead><tbody id="ss-accommodation-rows"></tbody></table></div>
       </section>
@@ -415,8 +451,10 @@
         <div class="panel-heading"><div><h3>Gate passes</h3><p id="ss-pass-permission-note">All people attached to a pass are shown together.</p></div></div>
         <div class="service-toolbar">
           <input id="ss-pass-search" type="search" placeholder="Search person, registration, or destination">
+          <select id="ss-pass-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
+          <select id="ss-pass-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+          <select id="ss-pass-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select>
           <select id="ss-pass-filter"><option value="ALL">All pass statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="OVERDUE">Overdue</option></select>
-          <select id="ss-pass-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
         </div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Everyone on pass</th><th>Destination</th><th>Status</th><th>Departure and return</th><th>Action</th></tr></thead><tbody id="ss-pass-rows"></tbody></table></div>
       </section>
@@ -426,8 +464,10 @@
         <div id="ss-fee-summary" class="summary-grid compact"></div>
         <div class="service-toolbar">
           <input id="ss-fee-search" type="search" placeholder="Search student or registration">
+          <select id="ss-fee-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
+          <select id="ss-fee-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
+          <select id="ss-fee-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select>
           <select id="ss-fee-filter"><option value="ALL">All students</option><option value="PAID">Fees paid</option><option value="UNPAID">Fees not paid</option></select>
-          <select id="ss-fee-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
         </div>
         <div class="callout">Use the status button to mark a verified exception. Every change is recorded in the audit history.</div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Student</th><th>Registration</th><th>Term</th><th>Due date</th><th>Status</th><th>Last updated</th></tr></thead><tbody id="ss-fee-rows"></tbody></table></div>
@@ -435,13 +475,13 @@
 
       <section id="ss-tab-duty" class="student-service-section panel">
         <div class="panel-heading"><div><h3>Gate duty today</h3></div></div>
-        <div class="service-toolbar"><input id="ss-duty-search" type="search" placeholder="Search student or registration"><select id="ss-duty-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></div>
+        <div class="service-toolbar"><input id="ss-duty-search" type="search" placeholder="Search student or registration"><select id="ss-duty-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select><select id="ss-duty-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select><select id="ss-duty-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select></div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Time</th><th>Student</th><th>Registration</th><th>Direction</th><th>Source</th></tr></thead><tbody id="ss-duty-rows"></tbody></table></div>
       </section>
 
       <section id="ss-tab-recent" class="student-service-section panel">
         <div class="panel-heading"><div><h3>Recent campus movements</h3></div></div>
-        <div class="service-toolbar"><input id="ss-recent-search" type="search" placeholder="Search student or registration"><select id="ss-recent-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></div>
+        <div class="service-toolbar"><input id="ss-recent-search" type="search" placeholder="Search student or registration"><select id="ss-recent-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select><select id="ss-recent-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select><select id="ss-recent-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select></div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Time</th><th>Student</th><th>Registration</th><th>Movement</th><th>Destination or pass</th></tr></thead><tbody id="ss-recent-rows"></tbody></table></div>
       </section>
 
@@ -456,7 +496,7 @@
           </form>
           <form id="ss-detail-export-form" class="panel form-stack">
             <h3>Detailed activity export</h3>
-            <label>Report<select id="ss-export-type"><option value="campus">Individual campus movements</option><option value="passes">Gate passes</option><option value="gate_duty">Gate duty</option></select></label>
+            <label>Report<select id="ss-export-type"><option value="campus">Individual campus movements</option><option value="passes">Gate passes</option><option value="gate_duty">Gate duty</option><option value="meals">Meal attendance</option></select></label>
             <label>Start date<input id="ss-export-start" type="date"></label>
             <label>End date<input id="ss-export-end" type="date"></label>
             <label>Class year<select id="ss-export-year"><option value="ALL">All years</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select></label>
@@ -564,6 +604,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=5"></script>
+  <script src="operations.js?v=7"></script>
 </body>
 </html>
