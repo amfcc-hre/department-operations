@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123d2b">
+  <title>AMFCC Live POD Task Board</title>
+  <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="pod.css?v=1">
+</head>
+<body>
+  <header class="pod-header">
+    <div><p class="eyebrow">AMFCC Harare</p><h1>Live POD Task Board</h1><p id="board-date">Loading today's plan</p></div>
+    <div class="header-actions"><span id="mode-pill" class="pill">Checking mode</span><span id="live-pill" class="pill live">Live</span><button id="refresh-button" type="button">Refresh</button></div>
+  </header>
+
+  <main>
+    <section class="duty-grid" aria-label="Leadership on duty">
+      <article><span>Prefect on Duty</span><strong id="pod-name">Not entered</strong></article>
+      <article><span>Senior Prefect on Duty</span><strong id="senior-pod-name">Not entered</strong></article>
+    </section>
+
+    <section class="board-heading"><div><p class="eyebrow">Approved work</p><h2>Today's task plan</h2><p>Department members are named. Other manpower is shown only as group totals.</p></div><span id="task-count" class="count">0 tasks</span></section>
+    <div id="session-board" class="session-board" aria-live="polite"><div class="empty">Loading the live plan…</div></div>
+  </main>
+
+  <footer><span id="updated-time">Connecting…</span><a href="index.html">Department Operations login</a></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="shared_config.js"></script>
+  <script src="pod.js?v=1"></script>
+</body>
+</html>

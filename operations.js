@@ -8,6 +8,12 @@
     data: null,
     groups: { groups: [], allocations: [], holiday_mode: false },
     planning: { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] },
+    plannerView: "daily",
+    editingRoster: [],
+    editingRosterDepartmentId: null,
+    plannerTimer: null,
+    draggedSessionId: null,
+    personLookupResolve: null,
     mode: { mode: "normal", conference_mode: false, holiday_mode: false },
     tools: null,
     studentServices: null,
@@ -73,30 +79,58 @@
     }
     return names.join(" / ") || "Department";
   }
+  function reportingSectionConfig(parentDepartmentId) {
+    var parent = departmentById(parentDepartmentId);
+    if (!parent) return null;
+    var configs = {
+      "horticulture": {
+        slugs:["open-field", "greenhouses"],
+        help:"Open Field and Greenhouses submit separately under Horticulture.",
+        title:"Horticulture reporting:",
+        note:"Use one Horticulture PIN, then choose Open Field or Greenhouses. Greenhouse 1, 2 and 3 are all included within Greenhouses."
+      },
+      "poultry": {
+        slugs:["layers", "broilers"],
+        help:"Layers and Broilers submit separately under Poultry.",
+        title:"Poultry reporting:",
+        note:"Use one Poultry PIN, then choose Layers or Broilers for each report."
+      }
+    };
+    return configs[parent.slug] || null;
+  }
   function reportingSections(parentDepartmentId) {
     if (!state.data || !parentDepartmentId) return [];
-    var parent = departmentById(parentDepartmentId);
-    if (!parent || parent.slug !== "horticulture") return [];
+    var config = reportingSectionConfig(parentDepartmentId);
+    if (!config) return [];
     return (state.data.departments || []).filter(function (department) {
       return department.parent_department_id === parentDepartmentId
+        && department.active !== false
         && department.workspace_enabled === false
-        && ["open-field", "greenhouses"].indexOf(department.slug) >= 0;
+        && config.slugs.indexOf(department.slug) >= 0;
     });
   }
   function baseReportDepartmentId(prefix) {
     return isDepartment() ? currentDepartmentId() : value(prefix + "-department");
   }
   function configureReportingSection(prefix) {
-    var sections = reportingSections(baseReportDepartmentId(prefix));
+    var parentId = baseReportDepartmentId(prefix);
+    var config = reportingSectionConfig(parentId);
+    var sections = reportingSections(parentId);
     var field = el(prefix + "-section-field");
     var select = el(prefix + "-section");
+    var help = el(prefix + "-section-help");
     var previous = select.value;
     fillSelect(select, sections, { first: "Choose section" });
     if (sections.some(function (section) { return section.id === previous; })) select.value = previous;
     field.hidden = !sections.length;
     select.required = !!sections.length;
+    if (help) help.textContent = config ? config.help : "";
     if (!sections.length) select.value = "";
-    if (prefix === "daily") el("daily-horticulture-note").hidden = !sections.length;
+    if (prefix === "daily") {
+      el("daily-reporting-note").hidden = !sections.length;
+      el("daily-reporting-note-title").textContent = config ? config.title : "";
+      el("daily-reporting-note-copy").textContent = config ? config.note : "";
+    }
   }
   function reportDepartmentId(prefix) {
     var parentId = baseReportDepartmentId(prefix);
@@ -114,6 +148,73 @@
   function isConference() { return !!(state.mode && state.mode.conference_mode); }
   function isKitchenWorkspace() { return isDepartment() && currentDepartmentSlug() === "kitchen"; }
   function isClinicWorkspace() { return isDepartment() && currentDepartmentSlug() === "clinic"; }
+  function peopleDirectory() {
+    return state.data && state.data.people_directory && state.data.people_directory.status === "success"
+      ? state.data.people_directory : { students: [], staff: [], leadership: [], department_members: [] };
+  }
+  function selectedMembersDepartmentId() {
+    return isDepartment() ? currentDepartmentId() : value("members-department");
+  }
+  function departmentMembers(departmentId) {
+    return (state.planning.department_members || peopleDirectory().department_members || []).filter(function (person) {
+      return person.department_id === departmentId;
+    });
+  }
+  function lookupPool(scope) {
+    var people = peopleDirectory();
+    if (scope === "staff") return people.staff || [];
+    if (scope === "student") return people.students || state.planning.student_lookup || [];
+    if (scope === "leadership") return state.planning.leadership_people || people.leadership || [];
+    if (scope === "senior") return (state.planning.leadership_people || people.leadership || []).filter(function (person) { return person.is_senior_prefect; });
+    if (scope === "department-member") return departmentMembers(currentDepartmentId());
+    if (scope === "department-hod") return departmentMembers(selectedMembersDepartmentId()).filter(function (person) { return person.member_role === "hod"; });
+    return [];
+  }
+  function exactLookup(scope, name) {
+    var target = String(name || "").trim().toLowerCase();
+    return lookupPool(scope).find(function (person) { return String(person.full_name || "").trim().toLowerCase() === target; }) || null;
+  }
+  function requireLookup(inputOrId, scope) {
+    var input = typeof inputOrId === "string" ? el(inputOrId) : inputOrId;
+    var person = exactLookup(scope || input.dataset.lookup, input.value);
+    if (!person) throw new Error("Choose an exact name from the lookup list.");
+    input.value = person.full_name;
+    return person;
+  }
+  function fillDatalist(id, items) {
+    var node = el(id);
+    if (!node) return;
+    var seen = {};
+    node.innerHTML = (items || []).filter(function (person) {
+      var key = String(person.full_name || "").toLowerCase();
+      if (!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).map(function (person) { return '<option value="' + escapeHtml(person.full_name) + '"></option>'; }).join("");
+  }
+  function refreshLookupLists() {
+    fillDatalist("staff-name-options", lookupPool("staff"));
+    fillDatalist("student-name-options", lookupPool("student"));
+    fillDatalist("leadership-name-options", lookupPool("leadership"));
+    fillDatalist("senior-prefect-options", lookupPool("senior"));
+    fillDatalist("department-member-options", lookupPool("department-member"));
+    fillDatalist("department-hod-options", lookupPool("department-hod"));
+  }
+  function choosePerson(scope,title) {
+    return new Promise(function (resolve,reject) {
+      state.personLookupResolve={resolve:resolve,reject:reject,scope:scope};
+      el("person-lookup-title").textContent=title||"Choose person";
+      el("person-lookup-input").dataset.lookup=scope;
+      el("person-lookup-input").setAttribute("list",scope==="staff"?"staff-name-options":scope==="leadership"?"leadership-name-options":scope==="department-member"?"department-member-options":"student-name-options");
+      el("person-lookup-input").value="";
+      el("person-lookup-modal").hidden=false;
+      setTimeout(function(){el("person-lookup-input").focus();},50);
+    });
+  }
+  function closePersonLookup() {
+    if(state.personLookupResolve)state.personLookupResolve.reject(new Error("No person selected."));
+    state.personLookupResolve=null; el("person-lookup-modal").hidden=true;
+  }
   function workspaceDefaultView() {
     if (isKitchenWorkspace()) return "meal-service";
     if (isClinicWorkspace()) return "clinic-service";
@@ -208,7 +309,14 @@
   function showLogin() {
     el("login-screen").hidden = false;
     el("app-shell").hidden = true;
+    el("access-type").value = "department";
+    el("department-login-field").hidden = false;
+    el("login-department").required = true;
+    el("login-department").value = "";
     el("access-code").value = "";
+    el("access-code").pattern = "[0-9]{4}";
+    var button = el("login-form").querySelector('button[type="submit"]');
+    button.disabled = false; button.textContent = "Open workspace"; delete button.dataset.label;
   }
 
   function showApp() {
@@ -235,6 +343,7 @@
     if (overviewButton) overviewButton.hidden = role === "department" && ["kitchen", "clinic"].indexOf(currentDepartmentSlug()) >= 0;
     applyDepartmentNavigation();
     all(".admin-department-field").forEach(function (node) { node.hidden = role === "department"; });
+    if (el("members-hod-confirm-field")) el("members-hod-confirm-field").hidden = role !== "department";
     all(".department-entry").forEach(function (node) { node.hidden = role === "student_leadership"; });
     all("[data-ss-admin-only]").forEach(function (node) { node.hidden = role !== "administrator"; });
     el("overview-range-control").hidden = role === "administrator";
@@ -298,10 +407,10 @@
     if (!state.session) return;
     var from = value("range-from") || today();
     state.mode = await rpc("system_mode_status");
-    var data = await rpc("ops_bootstrap", {
+    var data = await rpc("ops_bootstrap_v2", {
       p_session_token: state.session.session_token,
       p_from_date: from,
-      p_to_date: addDays(from, 21)
+      p_to_date: addDays(from, 62)
     });
     state.data = data;
     state.groups = await rpc("ops_group_planner", {
@@ -309,10 +418,10 @@
       p_from_date: from,
       p_to_date: addDays(from, 21)
     });
-    state.planning = await rpc("ops_planning_dashboard", {
+    state.planning = await rpc("ops_planning_dashboard_v2", {
       p_session_token: state.session.session_token,
       p_from_week: mondayFor(today()),
-      p_to_week: addDays(mondayFor(today()), 365)
+      p_to_week: addDays(mondayFor(today()), 120)
     });
     (state.data.session_requests || []).forEach(function (request) {
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
@@ -322,6 +431,24 @@
     else state.studentServices = null;
     renderAll();
     if (showMessage) toast("Workspace refreshed.");
+  }
+
+  async function refreshPlannerLive() {
+    if (!state.session || ["student_leadership","management"].indexOf(state.session.role)<0 || document.hidden) return;
+    if (all(".planner-approval-popover",el("planner-board")).some(function(node){return !node.hidden;})) return;
+    var from=value("range-from")||today();
+    try {
+      var data=await rpc("ops_bootstrap_v2",{p_session_token:state.session.session_token,p_from_date:from,p_to_date:addDays(from,62)});
+      var groups=await rpc("ops_group_planner",{p_session_token:state.session.session_token,p_from_date:from,p_to_date:addDays(from,62)});
+      var planning=await rpc("ops_planning_dashboard_v2",{p_session_token:state.session.session_token,p_from_week:mondayFor(today()),p_to_week:addDays(mondayFor(today()),120)});
+      state.data=data;state.groups=groups;state.planning=planning;
+      (state.data.session_requests||[]).forEach(function(request){request.request_kind=(state.groups.request_kinds||{})[request.id]||"planned";});
+      populateWorkspaceInputs();renderSummary();renderDutyRoster();renderTasks();renderDepartmentMemberSummary();renderMembersWorkspace();renderRequests();renderPlanner();renderStandingDepartments();renderOverviewSessions();
+      el("planner-live-state").textContent="Live · "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+      el("planner-live-state").className="status-pill green";
+    } catch(error) {
+      el("planner-live-state").textContent="Refresh failed";el("planner-live-state").className="status-pill red";
+    }
   }
 
   async function loadDepartmentTools(departmentId) {
@@ -341,7 +468,7 @@
 
   function populateWorkspaceInputs() {
     var departments = (state.data.departments || []).filter(function (d) { return d.workspace_enabled !== false; });
-    var selectors = ["task-department","request-department","daily-department","period-department","transfer-from","transfer-to","task-list-department","action-department","tools-department","standing-department"];
+    var selectors = ["task-department","request-department","daily-department","period-department","transfer-from","transfer-to","task-list-department","action-department","tools-department","standing-department","members-department"];
     selectors.forEach(function (id) {
       var node = el(id);
       if (!node) return;
@@ -365,10 +492,7 @@
     configureReportingSection("daily");
     configureReportingSection("period");
 
-    var datalist = el("staff-name-options");
-    datalist.innerHTML = (state.data.staff_directory || []).map(function (person) {
-      return '<option value="' + escapeHtml(person.full_name) + '"></option>';
-    }).join("");
+    refreshLookupLists();
   }
 
   function renderSummary() {
@@ -416,12 +540,14 @@
         var group = (state.groups.groups || []).find(function (g) { return g.code === a.group_code; });
         return a.headcount + " " + (group ? group.label : titleCase(a.group_code));
       }).join(", ");
-      var assignedCount = allocations.reduce(function (sum, a) { return sum + Number(a.headcount || 0); }, 0);
+      var planSession = findPlanSession(session.id) || {};
+      var namedMembers = planSession.department_members || [];
+      var assignedCount = allocations.reduce(function (sum, a) { return sum + Number(a.headcount || 0); }, 0) + namedMembers.length;
       var actions = "";
       if (isDepartment() && session.department_id === currentDepartmentId() && ["published","in_progress"].indexOf(session.status) >= 0) {
-        actions = '<div class="card-actions">' + (session.status === "published" ? '<button class="button secondary session-status" data-id="' + session.id + '" data-status="in_progress">Start session</button>' : '') + '<button class="button primary session-status" data-id="' + session.id + '" data-status="completed">Complete session</button></div>';
+        actions = '<label>Updated by<input class="session-actor" list="department-member-options" data-lookup="department-member" placeholder="Search department member"></label><div class="card-actions">' + (session.status === "published" ? '<button class="button secondary session-status" data-id="' + session.id + '" data-status="in_progress">Start session</button>' : '') + '<button class="button primary session-status" data-id="' + session.id + '" data-status="completed">Complete session</button></div>';
       }
-      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(department ? department.name : "Department") + '</h3><p>' + escapeHtml(formatDate(session.work_date)) + " · " + escapeHtml(slot ? slot.name : "Session") + '</p></div>' + statusPill(session.status) + '</div><div class="card-meta"><span>' + assignedCount + " / " + session.allocated_headcount + ' assigned</span></div>' + (labels ? '<p><strong>Groups:</strong> ' + escapeHtml(labels) + "</p>" : '<p class="muted">Student Leadership has not published group allocations yet.</p>') + actions + "</article>";
+      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(department ? department.name : "Department") + '</h3><p>' + escapeHtml(formatDate(session.work_date)) + " · " + escapeHtml(slot ? slot.name : "Session") + '</p></div>' + statusPill(session.status) + '</div><div class="card-meta"><span>' + assignedCount + " / " + session.allocated_headcount + ' assigned</span></div>' + (labels ? '<p><strong>Groups:</strong> ' + escapeHtml(labels) + "</p>" : '') + (namedMembers.length ? '<p><strong>Department members:</strong> ' + namedMembers.map(function (person) { return escapeHtml(person.full_name); }).join(", ") + '</p>' : '') + (!labels && !namedMembers.length ? '<p class="muted">Student Leadership has not published manpower details yet.</p>' : '') + actions + "</article>";
     }).join("") : "No sessions published yet.";
   }
 
@@ -488,14 +614,47 @@
 
   function renderDepartmentMemberSummary() {
     if (!isDepartment()) return;
-    var counts = departmentGroupCounts(currentDepartmentId());
-    var total = Object.keys(counts).reduce(function (sum, code) { return sum + Number(counts[code] || 0); }, 0);
-    var details = (state.groups.groups || []).filter(function (group) { return counts[group.code] > 0; }).map(function (group) {
-      return counts[group.code] + " " + group.label;
-    }).join(", ");
+    var members = departmentMembers(currentDepartmentId());
+    var total = members.length;
+    var details = members.map(function (person) { return person.full_name; }).join(", ");
     el("department-member-summary").innerHTML = total
-      ? '<strong>' + total + ' department member' + (total === 1 ? "" : "s") + ' included automatically.</strong>' + (details ? ' ' + escapeHtml(details) + '.' : '')
-      : '<strong>No department members are configured yet.</strong> Student Leadership can enter the four cohort counts under Standing departments.';
+      ? '<strong>' + total + ' named department member' + (total === 1 ? "" : "s") + ' included automatically.</strong> ' + escapeHtml(details) + '.'
+      : '<strong>No department members are configured yet.</strong> Open Department members to add the exact students.';
+  }
+
+  function loadRosterEditor(departmentId) {
+    state.editingRosterDepartmentId = departmentId || null;
+    state.editingRoster = departmentMembers(departmentId).map(function (person) {
+      return { student_id: person.student_id, full_name: person.full_name, member_role: person.member_role === "hod" ? "hod" : "member" };
+    });
+    refreshLookupLists();
+    renderMemberEditor();
+  }
+
+  function renderMemberEditor() {
+    var box = el("department-member-editor");
+    if (!box) return;
+    var rows = state.editingRoster || [];
+    box.classList.toggle("empty-state", !rows.length);
+    box.innerHTML = rows.length ? rows.map(function (person) {
+      return '<div class="member-editor-row" data-student="' + escapeHtml(person.student_id) + '"><span><strong>' + escapeHtml(person.full_name) + '</strong><small>' + (person.member_role === "hod" ? "HOD" : "Department member") + '</small></span><select class="member-editor-role" aria-label="Role for ' + escapeHtml(person.full_name) + '"><option value="member"' + (person.member_role === "member" ? " selected" : "") + '>Member</option><option value="hod"' + (person.member_role === "hod" ? " selected" : "") + '>HOD</option></select><button class="button quiet remove-department-member" type="button">Remove</button></div>';
+    }).join("") : "No members listed. Use the lookup above to add the first person.";
+  }
+
+  function renderMembersWorkspace() {
+    var departmentId = selectedMembersDepartmentId();
+    if (!departmentId && !isDepartment()) {
+      var departments = (state.data.departments || []).filter(function (department) { return department.active !== false && department.workspace_enabled !== false; });
+      if (departments.length) {
+        el("members-department").value = departments[0].id;
+        departmentId = departments[0].id;
+      }
+    }
+    if (state.editingRosterDepartmentId !== departmentId) loadRosterEditor(departmentId);
+    else {
+      refreshLookupLists();
+      renderMemberEditor();
+    }
   }
 
   function renderTasks() {
@@ -515,9 +674,10 @@
       var displayType = isConference() ? "emergency" : task.task_type;
       var displayPriority = isConference() ? "critical" : task.priority;
       var peopleText = metadata.simple_request
-        ? Number(metadata.department_member_count || 0) + " department + " + Number(metadata.extra_people_requested || 0) + " extra = " + Number(task.requested_people || 0)
+        ? Number(metadata.department_member_count || 0) + " named department + " + Number(metadata.extra_people_requested || 0) + " extra = " + Number(task.requested_people || 0)
         : String(task.requested_people || 0);
-      return '<article class="data-card ' + (task.status === "blocked" || isConference() ? "alert" : "") + '"><div class="card-top"><div><h3>' + escapeHtml(task.title) + '</h3><p>' + escapeHtml(department ? department.name : "") + " · " + escapeHtml(titleCase(displayType)) + " · " + escapeHtml(titleCase(task.cadence)) + '</p></div>' + statusPill(task.status) + '</div>' + (task.description ? '<p>' + escapeHtml(task.description) + "</p>" : "") + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="card-meta"><span>Priority: ' + escapeHtml(titleCase(displayPriority)) + '</span><span>Working day: ' + escapeHtml(formatDate(task.due_date)) + '</span><span>People: ' + escapeHtml(peopleText) + '</span><span>Owner: ' + escapeHtml(task.owner_name || "Not assigned") + '</span></div></article>';
+      var memberNames = Array.isArray(metadata.department_members) ? metadata.department_members.map(function (person) { return person.full_name; }).filter(Boolean) : [];
+      return '<article class="data-card ' + (task.status === "blocked" || isConference() ? "alert" : "") + '"><div class="card-top"><div><h3>' + escapeHtml(task.title) + '</h3><p>' + escapeHtml(department ? department.name : "") + " · " + escapeHtml(titleCase(displayType)) + " · " + escapeHtml(titleCase(task.cadence)) + '</p></div>' + statusPill(task.status) + '</div>' + (task.description ? '<p>' + escapeHtml(task.description) + "</p>" : "") + (metadata.work_location ? '<p><strong>Location:</strong> ' + escapeHtml(metadata.work_location) + '</p>' : '') + (memberNames.length ? '<p><strong>Department members:</strong> ' + memberNames.map(escapeHtml).join(", ") + '</p>' : '') + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="card-meta"><span>Priority: ' + escapeHtml(titleCase(displayPriority)) + '</span><span>Working day: ' + escapeHtml(formatDate(task.due_date)) + '</span><span>People: ' + escapeHtml(peopleText) + '</span><span>Owner: ' + escapeHtml(task.owner_name || "Not assigned") + '</span></div></article>';
     }).join("") : "No tasks match this view.";
     var availableTasks = (state.data.tasks || []).filter(function (task) { return ["done","cancelled"].indexOf(task.status) < 0 && (!isDepartment() || task.department_id === currentDepartmentId()); });
     fillSelect(el("request-tasks"), availableTasks, { id: "id", label: "title" });
@@ -543,21 +703,115 @@
     el("group-capacity-cards").innerHTML = groups.map(function (group) {
       return '<article class="summary-card"><div class="label">' + escapeHtml(group.label) + '</div><div class="value">' + Number(group.total || 0) + '</div><small>total available pool</small></article>';
     }).join("");
+    el("pending-task-count").textContent = String(requests.length);
     el("planner-board").classList.toggle("empty-state", !requests.length);
     el("planner-board").innerHTML = requests.length ? requests.map(function (request) {
       var department = departmentById(request.department_id);
       var task = (request.task_ids || []).map(taskById).filter(Boolean)[0];
       var metadata = task && task.metadata && typeof task.metadata === "object" ? task.metadata : {};
-      var memberCounts = departmentGroupCounts(request.department_id);
+      var namedMembers = Array.isArray(metadata.department_members) ? metadata.department_members : [];
+      var memberCount = Number(metadata.department_member_count || namedMembers.length || 0);
+      var extraNeeded = Math.max(0, Number(request.requested_headcount || 0) - memberCount);
       var slotOptions = '<option value="">Choose session</option>' + slots.map(function (slot) {
         return '<option value="' + escapeHtml(slot.id) + '" data-code="' + escapeHtml(slot.code) + '">' + escapeHtml(slot.name) + '</option>';
       }).join("");
       var groupInputs = groups.map(function (group) {
-        return '<label>' + escapeHtml(group.label) + '<input class="planner-group" data-group="' + escapeHtml(group.code) + '" type="number" min="0" max="' + Number(group.total || 0) + '" value="' + Number(memberCounts[group.code] || 0) + '"><small class="group-remaining" data-group-remaining="' + escapeHtml(group.code) + '">' + Number(group.total || 0) + ' remaining before this plan</small></label>';
+        return '<label>' + escapeHtml(group.label) + '<input class="planner-group" data-group="' + escapeHtml(group.code) + '" type="number" min="0" max="' + Number(group.total || 0) + '" value="0"><small class="group-remaining" data-group-remaining="' + escapeHtml(group.code) + '">' + Number(group.total || 0) + ' available before this plan</small></label>';
       }).join("");
-      return '<article class="planner-card ' + (request.request_kind === "unexpected" ? "warning" : "") + '" data-request="' + request.id + '" data-work-date="' + escapeHtml(request.work_date) + '" data-department="' + escapeHtml(request.department_id) + '"><div class="card-top"><div><h3>' + escapeHtml(task ? task.title : department ? department.name : "Department task") + '</h3><p>' + escapeHtml(department ? department.name : "Department") + ' · requested for ' + escapeHtml(formatDate(request.work_date)) + ' · ' + escapeHtml(titleCase(request.request_kind || "planned")) + '</p></div><span class="count-badge">' + request.requested_headcount + ' requested</span></div>' + (request.request_notes ? '<p>' + escapeHtml(request.request_notes) + '</p>' : '') + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="inline-plan-grid"><label>Work day<input class="planner-work-date" type="date" min="' + today() + '" max="' + addDays(today(), 120) + '" value="' + escapeHtml(request.work_date) + '" required></label><label>Session<select class="planner-slot" required>' + slotOptions + '</select></label><label>Approved total<input class="planner-allocation" type="number" min="1" max="100" value="' + request.requested_headcount + '"></label></div><fieldset class="cohort-fieldset planner-cohorts"><legend>Allocate the approved total</legend>' + groupInputs + '</fieldset><label>Decision note<textarea class="planner-notes" rows="2" placeholder="Optional note for the department"></textarea></label><div class="allocation-check">The four groups must add up to <strong>' + request.requested_headcount + '</strong>.</div><div class="card-actions"><button class="button primary planner-approve" type="button">Approve and publish</button><button class="button danger planner-decline" type="button">Decline</button></div></article>';
+      var location = metadata.work_location ? '<p class="task-location"><strong>Location:</strong> ' + escapeHtml(metadata.work_location) + '</p>' : '';
+      var memberLine = namedMembers.length ? '<p class="named-members"><strong>Department members:</strong> ' + namedMembers.map(function (person) { return escapeHtml(person.full_name); }).join(", ") + '</p>' : '<p class="muted">No named department members were included when this task was submitted.</p>';
+      return '<article class="planner-card ' + (request.request_kind === "unexpected" ? "warning" : "") + '" data-request="' + request.id + '" data-work-date="' + escapeHtml(request.work_date) + '" data-department="' + escapeHtml(request.department_id) + '" data-member-count="' + memberCount + '"><div class="card-top"><div><h3>' + escapeHtml(task ? task.title : department ? department.name : "Department task") + '</h3><p>' + escapeHtml(department ? department.name : "Department") + ' · ' + escapeHtml(formatDate(request.work_date)) + ' · ' + escapeHtml(titleCase(request.request_kind || "planned")) + '</p></div><span class="count-badge">' + request.requested_headcount + ' people</span></div>' + location + memberLine + (metadata.crucial_reason ? '<p class="priority-reason"><strong>Why crucial:</strong> ' + escapeHtml(metadata.crucial_reason) + '</p>' : '') + '<div class="card-actions planner-primary-actions"><button class="button primary planner-open-approve" type="button">Approve</button><button class="button danger planner-decline" type="button">Reject</button></div><div class="planner-approval-popover" hidden><div class="inline-plan-grid"><label>Work day<input class="planner-work-date" type="date" min="' + today() + '" max="' + addDays(today(), 120) + '" value="' + escapeHtml(request.work_date) + '" required></label><label>Session<select class="planner-slot" required>' + slotOptions + '</select></label><label>Approved total<input class="planner-allocation" type="number" min="' + memberCount + '" max="100" value="' + request.requested_headcount + '"></label></div><fieldset class="cohort-fieldset planner-cohorts"><legend>Allocate ' + extraNeeded + ' additional student' + (extraNeeded === 1 ? "" : "s") + '</legend>' + groupInputs + '</fieldset><label>Decision note<textarea class="planner-notes" rows="2" placeholder="Optional note for the department"></textarea></label><div class="allocation-check">Groups total <strong>0</strong> of <strong>' + extraNeeded + '</strong> additional students.</div><div class="card-actions"><button class="button primary planner-confirm" type="button">Publish task</button><button class="button quiet planner-cancel-approve" type="button">Cancel</button></div></div></article>';
     }).join("") : "No pending requests.";
     all(".planner-card", el("planner-board")).forEach(updatePlannerCardAvailability);
+    renderVisualPlan();
+  }
+
+  function plannerSlots() {
+    return isConference() ? [] : (state.data.time_slots || []).filter(function (slot) {
+      return !state.groups.holiday_mode || ["morning","afternoon"].indexOf(slot.code) >= 0;
+    });
+  }
+
+  function groupLabel(code) {
+    var group = (state.groups.groups || []).find(function (item) { return item.code === code; });
+    return group ? String(group.label || "").toLowerCase() : titleCase(code).toLowerCase();
+  }
+
+  function visualPlanCard(session) {
+    var tasks = session.tasks || [];
+    var taskTitle = tasks.map(function (task) { return task.title; }).join(" / ") || "Department task";
+    var locations = tasks.map(function (task) { return task.location; }).filter(Boolean);
+    var groups = (session.groups || []).filter(function (group) { return Number(group.headcount || 0) > 0; }).map(function (group) {
+      return Number(group.headcount) + " " + groupLabel(group.group_code);
+    });
+    var members = (session.department_members || []).map(function (person) { return person.full_name; });
+    var manpower = groups.concat(members.length ? [members.length + " named department member" + (members.length === 1 ? "" : "s")] : []);
+    return '<article class="visual-task-card" draggable="true" data-session-id="' + escapeHtml(session.id) + '" data-slot-id="' + escapeHtml(session.slot_id) + '" data-work-date="' + escapeHtml(session.work_date) + '"><div class="card-top"><div><h4>' + escapeHtml(taskTitle) + '</h4><p>' + escapeHtml(session.department_name + " · " + session.slot_name) + '</p></div><span class="drag-handle" title="Drag to move" aria-hidden="true">⋮⋮</span></div>' + (locations.length ? '<p class="task-location"><strong>Location:</strong> ' + locations.map(escapeHtml).join(", ") + '</p>' : '') + (groups.length ? '<p><strong>Groups:</strong> ' + groups.map(escapeHtml).join(", ") + '</p>' : '') + (members.length ? '<p><strong>Department members:</strong> ' + members.map(escapeHtml).join(", ") + '</p>' : '') + '<div class="card-meta"><span>' + escapeHtml(manpower.join(" · ") || String(session.allocated_headcount || 0) + " people") + '</span></div><button class="button quiet planner-move-button" type="button" data-session-id="' + escapeHtml(session.id) + '">Move</button></article>';
+  }
+
+  function renderVisualPlan() {
+    var board = el("visual-plan-board");
+    if (!board) return;
+    var sessions = (state.planning.plan_sessions || []).filter(function (session) {
+      return ["published","in_progress","draft"].indexOf(session.status) >= 0;
+    });
+    var daily = state.plannerView !== "weekly";
+    var day = value("planner-day") || today();
+    var week = mondayFor(value("planner-week") || day);
+    el("planner-daily-button").classList.toggle("active", daily);
+    el("planner-weekly-button").classList.toggle("active", !daily);
+    el("planner-day-field").hidden = !daily;
+    el("planner-week-field").hidden = daily;
+    el("visual-plan-heading").textContent = daily ? "Daily plan · " + formatDate(day) : "Weekly plan · " + formatDate(week);
+    el("visual-plan-help").textContent = daily ? "Drag a task to another session. Use Move on an iPad if dragging is inconvenient." : "Drag a task to another day. Its session stays the same unless you use Move.";
+    var columns;
+    if (daily) {
+      columns = plannerSlots().map(function (slot) {
+        return { key: slot.id, title: slot.name, date: day, slotId: slot.id, sessions: sessions.filter(function (session) { return session.work_date === day && session.slot_id === slot.id; }) };
+      });
+    } else {
+      columns = Array.from({ length: 7 }).map(function (_, index) {
+        var date = addDays(week,index);
+        return { key: date, title: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][index] + " " + new Date(date + "T12:00:00").getDate(), date: date, slotId: "", sessions: sessions.filter(function (session) { return session.work_date === date; }) };
+      });
+    }
+    var visibleCount = columns.reduce(function (total, column) { return total + column.sessions.length; },0);
+    board.classList.toggle("empty-state", !columns.length);
+    board.classList.toggle("weekly", !daily);
+    board.innerHTML = columns.length ? columns.map(function (column) {
+      return '<section class="plan-column drop-zone" data-drop-date="' + escapeHtml(column.date) + '" data-drop-slot="' + escapeHtml(column.slotId) + '"><header><strong>' + escapeHtml(column.title) + '</strong><span>' + column.sessions.length + '</span></header><div class="plan-column-cards">' + (column.sessions.length ? column.sessions.map(visualPlanCard).join("") : '<div class="drop-placeholder">Drop task here</div>') + '</div></section>';
+    }).join("") : "No work sessions are available in Conference Mode.";
+    board.classList.toggle("has-no-tasks", !visibleCount);
+  }
+
+  function findPlanSession(sessionId) {
+    return (state.planning.plan_sessions || []).find(function (session) { return session.id === sessionId; });
+  }
+
+  function openPlannerMove(sessionId) {
+    var session = findPlanSession(sessionId);
+    if (!session) return;
+    el("planner-move-session-id").value = session.id;
+    el("planner-move-date").value = session.work_date;
+    el("planner-move-date").min = today();
+    el("planner-move-date").max = addDays(today(),120);
+    fillSelect(el("planner-move-slot"),plannerSlots(),{ first:"Choose session" });
+    el("planner-move-slot").value = session.slot_id;
+    el("planner-move-modal").hidden = false;
+  }
+
+  async function movePlannedSession(sessionId,workDate,slotId,busyTarget) {
+    var actor = requireLookup("planner-actor","leadership");
+    setBusy(busyTarget,true,"Moving...");
+    try {
+      var result = await rpc("ops_move_planned_session",{
+        p_session_token:state.session.session_token,p_session_id:sessionId,
+        p_work_date:workDate,p_slot_id:slotId,p_actor_student_id:actor.student_id || actor.id
+      });
+      if (result.status !== "success") throw new Error(result.message || "The task could not be moved.");
+      await loadData(false);
+      toast("Task moved.");
+    } finally { setBusy(busyTarget,false); }
   }
 
   function standingReserved(groupCode, workDate, slotCode, currentDepartmentId) {
@@ -578,6 +832,12 @@
     var slotId = slotSelect ? slotSelect.value : "";
     var slotCode = selected && selected.dataset.code || "";
     var approved = Number(card.querySelector(".planner-allocation").value || 0);
+    var memberCount = Number(card.dataset.memberCount || 0);
+    var expectedExtra = Math.max(0, approved - memberCount);
+    var request = (state.data.session_requests || []).find(function (item) { return item.id === card.dataset.request; }) || {};
+    var task = (request.task_ids || []).map(taskById).filter(Boolean)[0] || {};
+    var metadata = task.metadata && typeof task.metadata === "object" ? task.metadata : {};
+    var memberGroups = metadata.department_member_groups || {};
     var sum = 0;
     all(".planner-group", card).forEach(function (input) {
       var group = (state.groups.groups || []).find(function (item) { return item.code === input.dataset.group; }) || {};
@@ -585,7 +845,7 @@
         return item.group_code === input.dataset.group && item.work_date === card.dataset.workDate && item.slot_id === slotId;
       }).reduce(function (total, item) { return total + Number(item.headcount || 0); }, 0) : 0;
       var reserved = slotCode ? standingReserved(input.dataset.group, card.dataset.workDate, slotCode, card.dataset.department) : 0;
-      var remaining = Math.max(0, Number(group.total || 0) - allocated - reserved);
+      var remaining = Math.max(0, Number(group.total || 0) - allocated - reserved - Number(memberGroups[input.dataset.group] || 0));
       input.max = String(remaining);
       var note = card.querySelector('[data-group-remaining="' + input.dataset.group + '"]');
       if (note) note.textContent = slotId ? remaining + " remaining for this session" : Number(group.total || 0) + " in the available pool";
@@ -593,8 +853,8 @@
     });
     var check = card.querySelector(".allocation-check");
     if (check) {
-      check.classList.toggle("invalid", sum !== approved);
-      check.innerHTML = 'Groups total <strong>' + sum + '</strong> of <strong>' + approved + '</strong> approved.';
+      check.classList.toggle("invalid", sum !== expectedExtra);
+      check.innerHTML = 'Groups total <strong>' + sum + '</strong> of <strong>' + expectedExtra + '</strong> additional students. <strong>' + memberCount + '</strong> named department members are already included.';
     }
   }
 
@@ -662,10 +922,8 @@
       "horticulture": { eyebrow:"Horticulture operations",title:"Open Field and Greenhouses",description:"One Horticulture workspace for crop planning, inputs, harvests and two separate reporting sections.",plan:"Plan crop work",planTypeLabel:"Crop plan type",planTypePlaceholder:"Planting, watering, crop care or harvest",planTitleLabel:"Crop, field or greenhouse",planTitlePlaceholder:"Describe the crop plan",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Input category",stockCategoryPlaceholder:"Enter the horticulture category",stockUnitPlaceholder:"kg, litre, tray, packet, item",log:"Record crop or harvest activity",logTypeLabel:"Crop record type",logTypePlaceholder:"Planting, watering, treatment, harvest or loss",logTitleLabel:"Crop and section",quantityLabel:"Area or output",nav:{tasks:"Crop work",requests:"Request field support","daily-report":"Section report","period-report":"Section summaries",tools:"Crops, inputs and harvests"},workflow:[["Open Field","Plan field work and submit its report separately."],["Greenhouses","Manage Greenhouses 1, 2 and 3 and submit one Greenhouses report."],["Inputs and harvests","Track seed, materials, treatments, output and losses."]]},
       "maintenance": { eyebrow:"Maintenance operations",title:"Faults, repairs and preventive work",description:"Run the maintenance job queue, manage parts and tools, and record repair history.",plan:"Plan maintenance jobs",planTypeLabel:"Maintenance type",planTypePlaceholder:"Fault, repair, inspection or preventive work",planTitleLabel:"Asset or location",planTitlePlaceholder:"What needs maintenance?",stock:"Add spare, material or tool",stockNameLabel:"Part, material or tool",stockCategoryLabel:"Maintenance category",stockCategoryPlaceholder:"Enter the maintenance category",stockUnitPlaceholder:"item, metre, litre, box",log:"Record job progress or equipment work",logTypeLabel:"Maintenance record type",logTypePlaceholder:"Inspection, repair, servicing or completion",logTitleLabel:"Asset, location or job",quantityLabel:"Items or hours",nav:{tasks:"Maintenance jobs",requests:"Request work crew",tools:"Repairs, spares and tools"},workflow:[["Fault queue","Turn faults into trackable repair jobs."],["Preventive work","Plan inspections and regular servicing."],["Spares and tools","Track parts, materials, equipment and usage."]]},
       "painting": { eyebrow:"Painting operations",title:"Painting jobs and materials",description:"Plan surfaces and rooms, manage paint and tools, and record preparation and completion.",plan:"Plan painting jobs",planTypeLabel:"Job type",planTypePlaceholder:"Preparation, painting, touch-up or restoration",planTitleLabel:"Area or item",planTitlePlaceholder:"What is being painted?",stock:"Add paint, material or tool",stockNameLabel:"Paint, material or tool",stockCategoryLabel:"Material category",stockCategoryPlaceholder:"Enter the painting category",stockUnitPlaceholder:"litre, tin, roll, item",log:"Record painting progress",logTypeLabel:"Painting record type",logTypePlaceholder:"Preparation, coat, completion, usage or issue",logTitleLabel:"Area or job",quantityLabel:"Area or material",nav:{tasks:"Painting jobs",tools:"Jobs, paint and tools"},workflow:[["Job preparation","Plan surfaces, colours and preparation work."],["Paint and materials","Track paint, consumables and tools."],["Progress records","Record coats, completed areas and issues."]]},
-      "flowers": { eyebrow:"Flower operations",title:"Flower cultivation and harvest",description:"Plan flower care, track growing inputs, and record harvests, losses and distribution.",plan:"Plan flower work",planTypeLabel:"Cultivation plan type",planTypePlaceholder:"Planting, watering, care or harvest",planTitleLabel:"Bed, variety or work",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Growing category",stockCategoryPlaceholder:"Enter the flower category",stockUnitPlaceholder:"packet, tray, litre, kg, item",log:"Record flower activity",logTypeLabel:"Flower record type",logTypePlaceholder:"Planting, treatment, harvest, distribution or loss",logTitleLabel:"Bed, variety or event",quantityLabel:"Stems or output",nav:{tasks:"Flower work",tools:"Cultivation and harvests"},workflow:[["Cultivation","Plan beds, care and seasonal work."],["Growing inputs","Track seed, treatments and materials."],["Harvest and losses","Record output, distribution and losses."]]},
-      "poultry": { eyebrow:"Poultry operations",title:"Flocks, feed and production",description:"Manage flock work, feed position, production, health events and losses.",plan:"Plan poultry work",planTypeLabel:"Flock plan type",planTypePlaceholder:"Feeding, health, housing or production",planTitleLabel:"Flock or work",stock:"Add feed or poultry supply",stockNameLabel:"Feed, medicine or supply",stockCategoryLabel:"Poultry category",stockCategoryPlaceholder:"Enter the poultry category",stockUnitPlaceholder:"kg, bag, bottle, tray, item",log:"Record flock or production activity",logTypeLabel:"Poultry record type",logTypePlaceholder:"Feed, health, eggs, growth, mortality or transfer",logTitleLabel:"Flock or event",quantityLabel:"Birds or output",nav:{tasks:"Flock work",tools:"Flocks, feed and production"},workflow:[["Flock care","Plan daily care, health and housing work."],["Feed position","Track feed received, used and remaining."],["Production and losses","Record output, growth, mortality and movements."]]},
-      "layers": { eyebrow:"Layers operations",title:"Layer flock and egg production",description:"Manage layer feed, flock health, egg production, breakages and transfers.",plan:"Plan layer work",planTypeLabel:"Layer plan type",planTypePlaceholder:"Feeding, flock care, housing or egg work",planTitleLabel:"Flock or work",stock:"Add layer feed or supply",stockNameLabel:"Feed, medicine or supply",stockUnitPlaceholder:"kg, bag, bottle, tray, item",log:"Record egg or flock activity",logTypeLabel:"Layer record type",logTypePlaceholder:"Eggs, feed, health, mortality or transfer",logTitleLabel:"Flock or event",quantityLabel:"Eggs or birds",nav:{tasks:"Layer flock work",tools:"Layers, feed and eggs"},workflow:[["Layer care","Plan feeding, health and housing work."],["Feed stock","Track feed deliveries, use and balance."],["Egg production","Record eggs, breakages, losses and transfers."]]},
-      "broilers": { eyebrow:"Broiler operations",title:"Broiler batches, feed and growth",description:"Manage broiler batches, feed remaining, growth checks, health events and losses.",plan:"Plan broiler batch work",planTypeLabel:"Batch plan type",planTypePlaceholder:"Feeding, growth, health or housing",planTitleLabel:"Batch or work",stock:"Add broiler feed or supply",stockNameLabel:"Feed, medicine or supply",stockUnitPlaceholder:"kg, bag, bottle, item",log:"Record broiler activity",logTypeLabel:"Broiler record type",logTypePlaceholder:"Feed, weight, health, mortality or transfer",logTitleLabel:"Batch or event",quantityLabel:"Birds or weight",nav:{tasks:"Broiler batch work",tools:"Batches, feed and growth"},workflow:[["Batch care","Plan feeding, health and housing work."],["Feed stock","Track deliveries, use and feed remaining."],["Growth and losses","Record weights, mortality and movements."]]},
+      "flowers-orchids": { eyebrow:"Flowers and Orchids operations",title:"Flowers, orchids and harvests",description:"One combined workspace for flower beds, orchid care, growing inputs, harvests, losses and distribution.",plan:"Plan flower and orchid work",planTypeLabel:"Cultivation plan type",planTypePlaceholder:"Planting, watering, orchid care or harvest",planTitleLabel:"Bed, orchid area, variety or work",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Growing category",stockCategoryPlaceholder:"Enter the Flowers and Orchids category",stockUnitPlaceholder:"packet, tray, litre, kg, item",log:"Record flower or orchid activity",logTypeLabel:"Cultivation record type",logTypePlaceholder:"Planting, orchid care, treatment, harvest, distribution or loss",logTitleLabel:"Bed, orchid area, variety or event",quantityLabel:"Stems, plants or output",nav:{tasks:"Flowers and Orchids work",tools:"Cultivation and harvests"},workflow:[["Flower beds","Plan planting, watering, care and harvest work."],["Orchid care","Track specialised orchid care and growing conditions."],["Harvest and inputs","Record materials, output, distribution and losses."]]},
+      "poultry": { eyebrow:"Poultry operations",title:"Layers and Broilers",description:"One Poultry workspace for layer flocks, broiler batches, feed, health, egg production, growth and losses, with separate reporting sections.",plan:"Plan poultry work",planTypeLabel:"Flock plan type",planTypePlaceholder:"Layers, broilers, feeding, health, housing or production",planTitleLabel:"Flock, batch or work",stock:"Add feed or poultry supply",stockNameLabel:"Feed, medicine or supply",stockCategoryLabel:"Poultry category",stockCategoryPlaceholder:"Enter the poultry category",stockUnitPlaceholder:"kg, bag, bottle, tray, item",log:"Record flock or production activity",logTypeLabel:"Poultry record type",logTypePlaceholder:"Eggs, feed, growth, health, mortality or transfer",logTitleLabel:"Flock, batch or event",quantityLabel:"Birds or output",nav:{tasks:"Poultry work",requests:"Request flock support","daily-report":"Section report","period-report":"Section summaries",tools:"Flocks, feed and production"},workflow:[["Layers","Manage layer care, feed and egg production, then report under Layers."],["Broilers","Manage broiler batches, feed, growth and losses, then report under Broilers."],["Shared supplies","Track feed, medicines, equipment and movements for the whole Poultry department."]]},
       "building": { eyebrow:"Building operations",title:"Construction projects and materials",description:"Plan building work, manage materials and equipment, and record progress, safety and completion.",plan:"Plan building work",planTypeLabel:"Project or work type",planTypePlaceholder:"Construction, repair, installation or inspection",planTitleLabel:"Building, area or project",stock:"Add building material or equipment",stockNameLabel:"Material, part or equipment",stockCategoryLabel:"Building category",stockCategoryPlaceholder:"Enter the building category",stockUnitPlaceholder:"bag, metre, sheet, item",log:"Record construction progress",logTypeLabel:"Building record type",logTypePlaceholder:"Delivery, work completed, inspection, issue or usage",logTitleLabel:"Area or project",quantityLabel:"Area or material",nav:{tasks:"Building projects",requests:"Request building crew",tools:"Projects and materials"},workflow:[["Project stages","Plan construction, repairs and installations."],["Materials and equipment","Track deliveries, usage and remaining quantities."],["Progress and safety","Record completed work, checks and blockers."]]},
       "media": { eyebrow:"Media operations",title:"Content, events and equipment",description:"Plan coverage and publications, manage media equipment, and record production and delivery.",plan:"Plan media work",planTypeLabel:"Media plan type",planTypePlaceholder:"Coverage, production, publication or event",planTitleLabel:"Event, story or production",stock:"Register media equipment or supply",stockNameLabel:"Equipment, accessory or supply",stockCategoryLabel:"Media category",stockCategoryPlaceholder:"Enter the media category",stockUnitPlaceholder:"device, cable, battery, item",log:"Record production or equipment activity",logTypeLabel:"Media record type",logTypePlaceholder:"Capture, edit, publish, handover or fault",logTitleLabel:"Event, production or equipment",quantityLabel:"Items or outputs",nav:{tasks:"Media assignments",tools:"Content and equipment"},workflow:[["Content calendar","Plan events, stories and publication work."],["Equipment register","Track cameras, audio, accessories and supplies."],["Production record","Record capture, editing, delivery and faults."]]},
       "chairs-upholstery": { eyebrow:"Upholstery operations",title:"Furniture jobs and materials",description:"Plan chair and upholstery jobs, track fabric and components, and record completed items and repairs.",plan:"Plan furniture and upholstery jobs",planTypeLabel:"Job type",planTypePlaceholder:"Repair, upholstery, restoration or production",planTitleLabel:"Furniture item or batch",stock:"Add upholstery material or tool",stockNameLabel:"Fabric, component or tool",stockCategoryLabel:"Material category",stockCategoryPlaceholder:"Enter the upholstery category",stockUnitPlaceholder:"metre, sheet, item, box",log:"Record furniture job progress",logTypeLabel:"Upholstery record type",logTypePlaceholder:"Strip, repair, cover, complete, usage or issue",logTitleLabel:"Item, batch or job",quantityLabel:"Items or material",nav:{tasks:"Furniture jobs",tools:"Jobs and materials"},workflow:[["Job queue","Plan repairs, restoration and new work."],["Materials","Track fabric, foam, components and tools."],["Finished work","Record completed items, usage and issues."]]},
@@ -678,11 +936,36 @@
       "finance-accounts": { eyebrow:"Finance operations",title:"Finance cycles and administrative work",description:"Plan recurring finance work, track office resources, and keep dated operational records and follow-up items.",plan:"Plan finance and accounts work",planTypeLabel:"Finance work type",planTypePlaceholder:"Payment cycle, reconciliation, filing or review",planTitleLabel:"Process or work item",stock:"Add office resource or controlled item",stockNameLabel:"Resource or controlled item",stockCategoryLabel:"Resource category",stockCategoryPlaceholder:"Enter the Finance category",stockUnitPlaceholder:"item, book, packet, licence",log:"Record finance operations",logTypeLabel:"Finance record type",logTypePlaceholder:"Reconciliation, submission, filing, follow-up or issue",logTitleLabel:"Process or record",quantityLabel:"Items or records",nav:{tasks:"Finance work queue",tools:"Finance work and records"},workflow:[["Work cycles","Plan reconciliations, payments and regular submissions."],["Controlled resources","Track stationery, books, devices and licences."],["Operational record","Record completed cycles, exceptions and follow-up."]]},
       "conference-centre": { eyebrow:"Conference operations",title:"Events, spaces and service readiness",description:"Plan conferences and room setups, manage event supplies and equipment, and record attendance, service and issues.",plan:"Plan events and room setups",planTypeLabel:"Event plan type",planTypePlaceholder:"Conference, meeting, setup, service or turnaround",planTitleLabel:"Event or booking",stock:"Add event supply or equipment",stockNameLabel:"Supply or equipment",stockCategoryLabel:"Conference category",stockCategoryPlaceholder:"Enter the Conference category",stockUnitPlaceholder:"item, set, packet, litre",log:"Record event or venue activity",logTypeLabel:"Conference record type",logTypePlaceholder:"Setup, attendance, service, handover, usage or issue",logTitleLabel:"Event, room or activity",quantityLabel:"Guests or items",nav:{tasks:"Event work",requests:"Request event support",tools:"Events, spaces and supplies"},workflow:[["Event calendar","Plan bookings, room layouts and service needs."],["Venue readiness","Track equipment, consumables and setup work."],["Service record","Record attendance, handovers, use and issues."]]}
     };
-    return Object.assign({}, base, profiles[slug] || {});
+    var focusedProfiles = {
+      "offices": { eyebrow:"Office operations",title:"Office services, records and supplies",description:"Coordinate office support, document movement, service requests and shared supplies.",plan:"Plan office services",stock:"Add office supply or controlled item",log:"Record office service or document activity",nav:{tasks:"Office work",tools:"Services, records and supplies"},workflow:[["Office support","Plan reception, filing and administrative support."],["Document flow","Record documents received, routed and completed."],["Office supplies","Track stationery and shared controlled items."]]},
+      "administrators-office": { eyebrow:"Administrator's Office",title:"Administrator's Office workflow",description:"Manage the Administrator's Office diary, follow-ups, records and controlled resources.",plan:"Plan Administrator's Office work",stock:"Add office resource",log:"Record decision, follow-up or completed action",nav:{tasks:"Office actions",tools:"Diary, actions and records"},workflow:[["Executive diary","Plan meetings, deadlines and required preparation."],["Action follow-up","Record instructions and completion status."],["Controlled records","Track files and office resources."]]},
+      "motor-mechanics": { eyebrow:"Motor mechanics",title:"Vehicle repairs, servicing and workshop work",description:"Plan diagnostics and repairs, track workshop parts and record vehicle service history.",plan:"Plan workshop jobs",stock:"Add spare part, fluid or tool",log:"Record diagnosis, repair or service",nav:{tasks:"Workshop jobs",tools:"Vehicles, parts and repairs"},workflow:[["Vehicle queue","Plan diagnosis, servicing and repair jobs."],["Parts and tools","Track spares, fluids and workshop equipment."],["Service history","Record faults, work completed and roadworthiness checks."]]},
+      "grounds": { eyebrow:"Grounds operations",title:"Campus grounds and outdoor areas",description:"Plan grounds care, manage outdoor tools and supplies, and record completed areas and issues.",plan:"Plan grounds work",stock:"Add grounds material or tool",log:"Record grounds activity",nav:{tasks:"Grounds work",tools:"Areas, tools and upkeep"},workflow:[["Area rounds","Plan sweeping, clearing and outdoor upkeep."],["Tools and materials","Track grounds equipment and consumables."],["Completed areas","Record work, hazards and follow-up."]]},
+      "lawn-cutting": { eyebrow:"Lawn cutting",title:"Lawn schedule, machines and fuel",description:"Schedule lawn areas, track cutters, fuel and parts, and record completed work and faults.",plan:"Plan lawn cutting",stock:"Add fuel, part or machine item",log:"Record lawn work or machine use",nav:{tasks:"Lawn schedule",tools:"Areas, machines and fuel"},workflow:[["Cutting schedule","Plan each lawn area and frequency."],["Machine readiness","Track fuel, blades, parts and faults."],["Area completion","Record areas cut and work still open."]]},
+      "security": { eyebrow:"Security operations",title:"Security posts, rounds and incidents",description:"Plan security coverage, track operational equipment and record rounds, handovers and incidents.",plan:"Plan security coverage",stock:"Add security equipment or supply",log:"Record round, handover or incident",nav:{tasks:"Security duties",tools:"Posts, rounds and equipment"},workflow:[["Post coverage","Plan security posts and relief."],["Rounds and handovers","Record patrols and shift information."],["Incident follow-up","Record operational incidents and required action."]]},
+      "immigration": { eyebrow:"Immigration support",title:"Student immigration records and deadlines",description:"Plan permit work, track document requirements and record submissions and follow-ups without storing secrets.",plan:"Plan immigration case work",stock:"Add form or office resource",log:"Record submission or follow-up",nav:{tasks:"Immigration actions",tools:"Cases, deadlines and records"},workflow:[["Deadline calendar","Plan permit and document deadlines."],["Submission checklist","Track required non-confidential documents."],["Follow-up record","Record submissions, responses and next steps."]]},
+      "chapel": { eyebrow:"Chapel operations",title:"Chapel programme and readiness",description:"Plan chapel services, spaces and support needs, then record attendance totals and operational issues.",plan:"Plan chapel programme",stock:"Add chapel supply or equipment",log:"Record service or chapel activity",nav:{tasks:"Chapel work",tools:"Programme, space and supplies"},workflow:[["Service programme","Plan services and preparation work."],["Space readiness","Track seating, equipment and supplies."],["Service record","Record totals, issues and follow-up."]]},
+      "compassion-house": { eyebrow:"Compassion House",title:"Compassion House service and resources",description:"Plan support activities, track supplies and record service totals and practical follow-up.",plan:"Plan Compassion House work",stock:"Add support supply or equipment",log:"Record service activity",nav:{tasks:"Support work",tools:"Activities and supplies"},workflow:[["Support activities","Plan practical service work."],["Resource position","Track donated and operational supplies."],["Service record","Record activity totals and follow-up needs."]]},
+      "international-student-representatives": { eyebrow:"International students",title:"International student representation",description:"Track non-confidential student concerns, meetings, support actions and institutional follow-up.",plan:"Plan representative work",stock:"Add office resource",log:"Record meeting or support action",nav:{tasks:"Representation actions",tools:"Meetings and follow-up"},workflow:[["Student concerns","Record themes without exposing private case details."],["Meetings","Plan representative meetings and agendas."],["Follow-up","Track agreed institutional actions."]]},
+      "toilets": { eyebrow:"Sanitation operations",title:"Toilet areas, cleaning and supplies",description:"Schedule sanitation rounds, track cleaning materials and record completed areas, faults and restocking.",plan:"Plan sanitation rounds",stock:"Add cleaning material or equipment",log:"Record sanitation check or cleaning",nav:{tasks:"Sanitation work",tools:"Areas, checks and supplies"},workflow:[["Area schedule","Plan Hallelujah, Berea, Jubilee and Administration areas."],["Cleaning supplies","Track chemicals, paper and equipment."],["Checks and faults","Record completed rounds and maintenance needs."]]},
+      "hosting": { eyebrow:"Hosting operations",title:"Guest hosting and service readiness",description:"Plan guest arrival and hosting requirements, track service items and record handovers and issues.",plan:"Plan hosting service",stock:"Add hosting supply or equipment",log:"Record guest service or handover",nav:{tasks:"Hosting work",tools:"Guests, service and supplies"},workflow:[["Arrival plan","Prepare guest arrival and hosting responsibilities."],["Service readiness","Track rooms, refreshments and required items."],["Handover","Record completed service and open issues."]]},
+      "student-accommodation": { eyebrow:"Student accommodation",title:"Residence readiness and accommodation work",description:"Plan residence work, track room resources and record inspections, faults and operational follow-up.",plan:"Plan accommodation work",stock:"Add room or residence resource",log:"Record inspection, fault or handover",nav:{tasks:"Residence work",tools:"Rooms, inspections and resources"},workflow:[["Residence readiness","Plan room and common-area work."],["Room resources","Track accommodation equipment and supplies."],["Inspections","Record checks, faults and completion."]]},
+      "prayer": { eyebrow:"Prayer operations",title:"Prayer programme and support",description:"Plan prayer activities, spaces and support needs and record participation totals and follow-up.",plan:"Plan prayer activity",stock:"Add prayer programme supply",log:"Record prayer activity",nav:{tasks:"Prayer programme",tools:"Activities and support"},workflow:[["Programme","Plan prayer times and preparation."],["Space and support","Track rooms and required items."],["Activity record","Record totals and operational follow-up."]]},
+      "legacy-cafe": { eyebrow:"Legacy Cafe",title:"Cafe service, stock and sales activity",description:"Plan cafe service, manage food and beverage stock and record output, usage, wastage and issues.",plan:"Plan cafe service",stock:"Add cafe product or ingredient",log:"Record cafe service or stock activity",nav:{tasks:"Cafe work",tools:"Service, stock and records"},workflow:[["Service plan","Plan products and service periods."],["Stock position","Track products, ingredients and supplies."],["Usage and wastage","Record output, loss and service issues."]]},
+      "protocol": { eyebrow:"Protocol operations",title:"Protocol, ceremonies and guest movement",description:"Plan ceremonial order, guest reception and movement, track protocol materials and record event delivery.",plan:"Plan protocol assignment",stock:"Add protocol item or equipment",log:"Record protocol event or handover",nav:{tasks:"Protocol assignments",tools:"Events, movement and materials"},workflow:[["Ceremonial plan","Set order, timing and responsibilities."],["Guest movement","Plan reception, escort and seating."],["Event record","Record delivery, handovers and issues."]]},
+      "sports": { eyebrow:"Sports operations",title:"Sports programme, equipment and facilities",description:"Plan training and fixtures, track sports equipment and record participation, results and facility issues.",plan:"Plan sports activity",stock:"Add sports equipment or supply",log:"Record training, fixture or equipment use",nav:{tasks:"Sports work",tools:"Programme and equipment"},workflow:[["Programme","Plan training, fixtures and preparation."],["Equipment","Track balls, kits and facility items."],["Activity record","Record participation, results and issues."]]},
+      "church-representative": { eyebrow:"Church representation",title:"Church liaison and follow-up",description:"Plan liaison activities, record non-confidential communication and track institutional follow-up.",plan:"Plan church liaison",stock:"Add liaison resource",log:"Record meeting or communication",nav:{tasks:"Liaison actions",tools:"Meetings and follow-up"},workflow:[["Liaison calendar","Plan meetings and church engagements."],["Communication record","Record key non-confidential outcomes."],["Action follow-up","Track institutional responses and completion."]]},
+      "orchard": { eyebrow:"Orchard operations",title:"Trees, inputs and harvests",description:"Plan orchard care, track inputs and equipment and record treatment, harvests, losses and issues.",plan:"Plan orchard work",stock:"Add orchard input or tool",log:"Record tree care or harvest",nav:{tasks:"Orchard work",tools:"Trees, inputs and harvests"},workflow:[["Tree care","Plan pruning, watering and maintenance."],["Inputs","Track treatments, tools and materials."],["Harvest record","Record output, losses and distribution."]]},
+      "generator": { eyebrow:"Generator operations",title:"Generator readiness, fuel and servicing",description:"Plan generator checks, track fuel and spares and record runtime, servicing, faults and handovers.",plan:"Plan generator work",stock:"Add fuel, spare or service item",log:"Record runtime, check or fault",nav:{tasks:"Generator work",tools:"Fuel, checks and servicing"},workflow:[["Readiness checks","Plan routine inspections and test runs."],["Fuel and spares","Track fuel, oil, filters and parts."],["Runtime history","Record hours, faults and servicing."]]},
+      "logistics": { eyebrow:"Logistics operations",title:"Movements, deliveries and event support",description:"Plan deliveries and resource movement, track logistics equipment and record handovers and completion.",plan:"Plan logistics movement",stock:"Add logistics equipment or supply",log:"Record delivery, movement or handover",nav:{tasks:"Logistics queue",tools:"Movements and resources"},workflow:[["Movement plan","Schedule deliveries and resource movement."],["Resource readiness","Track trolleys, containers and supplies."],["Handover record","Record delivery, receipt and open issues."]]},
+      "flags": { eyebrow:"Flags operations",title:"Flags, display schedule and condition",description:"Plan flag display, track each flag and fitting and record condition, placement and replacement needs.",plan:"Plan flag display",stock:"Add flag, fitting or supply",log:"Record placement or condition check",nav:{tasks:"Flag duties",tools:"Displays and condition"},workflow:[["Display schedule","Plan raising, lowering and event displays."],["Flag register","Track flags, poles and fittings."],["Condition checks","Record damage, cleaning and replacement."]]},
+      "gongs": { eyebrow:"Gongs operations",title:"Gong schedule, locations and condition",description:"Plan gong duties, track instruments and fittings and record use, condition and repair needs.",plan:"Plan gong duty",stock:"Add gong, fitting or supply",log:"Record use or condition check",nav:{tasks:"Gong duties",tools:"Schedule and equipment"},workflow:[["Duty schedule","Plan times, locations and responsible members."],["Equipment","Track gongs and fittings."],["Condition record","Record use, damage and repair needs."]]}
+    };
+    return Object.assign({}, base, profiles[slug] || focusedProfiles[slug] || {});
   }
 
   function applyDepartmentNavigation() {
-    var defaults = { overview:"Overview",tasks:"Tasks",requests:"Sessions","daily-report":"Daily report","period-report":"Weekly / monthly",tools:"Department tools",transfers:"Transfers" };
+    var defaults = { overview:"Overview",tasks:"Tasks",members:"Department members",requests:"Sessions","daily-report":"Daily report","period-report":"Weekly / monthly",tools:"Department tools",transfers:"Transfers" };
     var labels = isDepartment() ? Object.assign({}, defaults, toolProfile(currentDepartmentSlug()).nav || {}) : defaults;
     Object.keys(defaults).forEach(function (view) {
       var button = el("main-nav").querySelector('[data-view="' + view + '"]');
@@ -1322,7 +1605,7 @@
     if (state.session.role !== "administrator") return;
     var departments = (state.data.departments || []).filter(function (d) { return d.workspace_enabled; });
     el("department-access-list").innerHTML = departments.map(function (department) {
-      return '<article class="access-card"><div class="card-top"><div><h3>' + escapeHtml(department.name) + '</h3><p class="muted">' + (department.login_enabled ? "PIN is enabled" : "No PIN set") + '</p></div>' + statusPill(department.login_enabled ? "green" : "amber") + '</div><form class="department-code-form" data-department="' + department.id + '"><label>New 4-digit PIN<input type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="new-password"></label><label>Recorded by<input class="code-actor" list="staff-name-options" placeholder="Your name"></label><button class="button secondary" type="submit">Set PIN</button></form></article>';
+      return '<article class="access-card"><div class="card-top"><div><h3>' + escapeHtml(department.name) + '</h3><p class="muted">' + (department.login_enabled ? "PIN is enabled" : "No PIN set") + '</p></div>' + statusPill(department.login_enabled ? "green" : "amber") + '</div><form class="department-code-form" data-department="' + department.id + '"><label>New 4-digit PIN<input type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="new-password"></label><label>Recorded by<input class="code-actor" list="student-name-options" data-lookup="student" placeholder="Search exact name" required></label><button class="button secondary" type="submit">Set PIN</button></form></article>';
     }).join("");
     var sync = state.data.jira_sync || { pending: 0, processing: 0, failed: 0, sent: 0 };
     el("jira-sync-counts").innerHTML = [[sync.pending,"Pending"],[sync.processing,"Processing"],[sync.failed,"Failed"],[sync.sent,"Sent"]].map(function (item) {
@@ -1343,6 +1626,7 @@
     renderReportsAttention();
     renderTasks();
     renderDepartmentMemberSummary();
+    renderMembersWorkspace();
     renderRequests();
     renderPlanner();
     renderStandingDepartments();
@@ -1427,12 +1711,6 @@
     return result;
   }
 
-  async function rememberName(name, departmentId) {
-    name = String(name || "").trim();
-    if (!name) return;
-    try { await command("save_staff_name", { actor_name: name, department_id: departmentId || currentDepartmentId() }); } catch (error) { /* recording work must not fail because name memory failed */ }
-  }
-
   function addMetric(metric) {
     var fragment = el("metric-row-template").content.cloneNode(true);
     var row = fragment.querySelector(".metric-row");
@@ -1468,11 +1746,13 @@
   function dailyPayload(submit) {
     var reportDate = value("daily-date");
     var departmentId = dailyDepartmentId();
-    if (!departmentId) throw new Error("Choose Open Field or Greenhouses before saving the Horticulture report.");
+    if (!departmentId) throw new Error("Choose a reporting section before saving this report.");
+    var actor=requireLookup("daily-actor","staff");
+    var staff=value("daily-staff")?requireLookup("daily-staff","staff"):null;
     return {
-      actor_name: value("daily-actor"), department_id: departmentId, report_type: "daily",
+      actor_name: actor.full_name, department_id: departmentId, report_type: "daily",
       report_date: reportDate, period_start: reportDate, period_end: reportDate,
-      staff_on_duty: value("daily-staff"), work_completed: value("daily-completed"),
+      staff_on_duty: staff?staff.full_name:"", work_completed: value("daily-completed"),
       work_open: value("daily-open"), challenges: value("daily-challenges"),
       action_required: value("daily-action"), stock_equipment: value("daily-stock"),
       risks: value("daily-risks"), support_required: value("daily-support"),
@@ -1485,7 +1765,6 @@
     try {
       var payload = dailyPayload(submit);
       await command("save_report", payload);
-      await rememberName(payload.actor_name, isDepartment() ? currentDepartmentId() : payload.department_id);
       localStorage.removeItem("amfcc_ops_daily_draft");
       await loadData(false);
       toast(submit ? "Daily report submitted." : "Draft saved.");
@@ -1512,9 +1791,10 @@
 
   function periodPayload(submit) {
     var departmentId = reportDepartmentId("period");
-    if (!departmentId) throw new Error("Choose Open Field or Greenhouses before saving the Horticulture report.");
+    if (!departmentId) throw new Error("Choose a reporting section before saving this report.");
+    var actor=requireLookup("period-actor","staff");
     return {
-      actor_name: value("period-actor"), department_id: departmentId,
+      actor_name: actor.full_name, department_id: departmentId,
       report_type: value("period-type"), report_date: value("period-end"), period_start: value("period-start"), period_end: value("period-end"),
       summary: value("period-summary"), work_completed: value("period-completed"), work_open: value("period-open"),
       challenges: value("period-challenges"), action_required: value("period-action"), stock_equipment: value("period-stock"),
@@ -1528,7 +1808,6 @@
     try {
       var payload = periodPayload(submit);
       await command("save_report", payload);
-      await rememberName(payload.actor_name, isDepartment() ? currentDepartmentId() : payload.department_id);
       await loadData(false);
       toast(submit ? "Report submitted." : "Draft saved.");
     } catch (error) { toast(error.message, true); }
@@ -1536,6 +1815,23 @@
   }
 
   function bindEvents() {
+    document.addEventListener("submit", function (event) {
+      var invalid = all("[data-lookup]", event.target).find(function (input) {
+        return String(input.value || "").trim() && !exactLookup(input.dataset.lookup,input.value);
+      });
+      if (invalid) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        invalid.focus();
+        toast("Choose an exact name from the lookup list.",true);
+      }
+    },true);
+    document.addEventListener("change",function (event) {
+      var input = event.target.closest && event.target.closest("[data-lookup]");
+      if (!input || !String(input.value || "").trim()) return;
+      var person = exactLookup(input.dataset.lookup,input.value);
+      if (person) input.value = person.full_name;
+    });
     el("access-type").addEventListener("change", function () {
       var department = value("access-type") === "department";
       el("department-login-field").hidden = !department;
@@ -1647,16 +1943,18 @@
     });
     el("work-request-form").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Submitting...");
+      var actor;
+      try { actor = requireLookup("work-actor","department-member"); }
+      catch (lookupError) { setBusy(event.currentTarget,false); toast(lookupError.message,true); return; }
       var payload = {
-        title: value("work-title"), description: value("work-description"), work_date: value("work-date"),
+        title: value("work-title"), description: value("work-description"), location:value("work-location"), work_date: value("work-date"),
         unexpected: el("work-unexpected").checked, priority: isConference() ? "crucial" : value("work-priority"),
         crucial_reason: value("work-crucial-reason"), cadence: value("work-cadence"),
-        extra_people: parseNumber(value("work-extra-people")) || 0, actor_name: value("work-actor")
+        extra_people: parseNumber(value("work-extra-people")) || 0, actor_student_id:actor.student_id || actor.id
       };
       try {
-        var result = await rpc("ops_submit_work_request_v2", { p_session_token: state.session.session_token, p_payload: payload });
+        var result = await rpc("ops_submit_work_request_v3", { p_session_token: state.session.session_token, p_payload: payload });
         if (result.status !== "success") throw new Error(result.message || "The task could not be submitted.");
-        await rememberName(payload.actor_name, currentDepartmentId());
         event.currentTarget.reset();
         el("work-date").value = addDays(today(), 1);
         el("work-date").min = addDays(today(), 1);
@@ -1671,6 +1969,39 @@
     el("task-filter").addEventListener("change", renderTasks);
     el("task-list-department").addEventListener("change", renderTasks);
 
+    el("members-department").addEventListener("change",function(){loadRosterEditor(this.value);});
+    el("add-department-member").addEventListener("click",function(){
+      try {
+        var student=requireLookup("member-lookup","student");
+        if((state.editingRoster||[]).some(function(person){return person.student_id===(student.id||student.student_id);}))throw new Error("That student is already listed.");
+        state.editingRoster.push({student_id:student.id||student.student_id,full_name:student.full_name,member_role:value("member-role")||"member"});
+        el("member-lookup").value=""; renderMemberEditor();
+      } catch(error){toast(error.message,true);}
+    });
+    el("department-member-editor").addEventListener("click",function(event){
+      var button=event.target.closest(".remove-department-member"); if(!button)return;
+      var row=button.closest(".member-editor-row"); state.editingRoster=state.editingRoster.filter(function(person){return person.student_id!==row.dataset.student;}); renderMemberEditor();
+    });
+    el("department-member-editor").addEventListener("change",function(event){
+      if(!event.target.matches(".member-editor-role"))return;
+      var row=event.target.closest(".member-editor-row"),person=state.editingRoster.find(function(item){return item.student_id===row.dataset.student;});
+      if(person)person.member_role=event.target.value;
+    });
+    el("department-members-form").addEventListener("submit",async function(event){
+      event.preventDefault(); var form=event.currentTarget; setBusy(form,true,"Saving...");
+      try {
+        var actorId=null;
+        if(isDepartment()){var hod=requireLookup("members-hod-confirm","department-hod");actorId=hod.student_id||hod.id;}
+        var result=await rpc("ops_save_department_members",{
+          p_session_token:state.session.session_token,p_department_id:selectedMembersDepartmentId(),
+          p_members:state.editingRoster.map(function(person){return{student_id:person.student_id,member_role:person.member_role};}),
+          p_actor_student_id:actorId
+        });
+        if(result.status!=="success")throw new Error(result.message||"The department roster could not be saved.");
+        state.editingRosterDepartmentId=null; await loadData(false); toast("Department members saved.");
+      }catch(error){toast(error.message,true);}finally{setBusy(form,false);}
+    });
+
     el("export-task-list").addEventListener("click", function () {
       try {
         var departmentFilter = value("task-list-department"), filter = value("task-filter") || "open";
@@ -1684,8 +2015,10 @@
           var metadata = task.metadata && typeof task.metadata === "object" ? task.metadata : {};
           return {
             department: departmentPath(task.department_id), task: task.title, description: task.description || "",
+            location: metadata.work_location || "",
             working_day: task.due_date || "", status: task.status, priority: isConference() ? "critical" : task.priority,
             recurrence: task.cadence, department_members: metadata.department_member_count || 0,
+            department_member_names: Array.isArray(metadata.department_members) ? metadata.department_members.map(function(person){return person.full_name;}).join("; ") : "",
             extra_people: metadata.extra_people_requested || 0, total_people: task.requested_people || 0,
             owner: task.owner_name || "", crucial_reason: metadata.crucial_reason || ""
           };
@@ -1697,10 +2030,14 @@
     el("duty-roster-form").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
       try {
-        var result = await rpc("ops_save_weekly_duty", {
+        var prefect = requireLookup("duty-prefect","leadership");
+        var senior = requireLookup("duty-senior-prefect","senior");
+        var actor = requireLookup("duty-actor","leadership");
+        var result = await rpc("ops_save_weekly_duty_v2", {
           p_session_token: state.session.session_token, p_week_start: value("duty-week-start"),
-          p_prefect_on_duty: value("duty-prefect"), p_senior_prefect_on_duty: value("duty-senior-prefect"),
-          p_notes: value("duty-notes"), p_actor_name: value("duty-actor")
+          p_prefect_student_id: prefect.student_id || prefect.id,
+          p_senior_prefect_student_id: senior.student_id || senior.id,
+          p_notes: value("duty-notes"), p_actor_student_id: actor.student_id || actor.id
         });
         if (result.status !== "success") throw new Error(result.message || "The duty roster was not saved.");
         await loadData(false); toast("Duty roster saved.");
@@ -1723,10 +2060,11 @@
       var days = all('input[name="standing-day"]:checked', event.currentTarget).map(function (input) { return Number(input.value); });
       var slots = all('input[name="standing-slot"]:checked', event.currentTarget).map(function (input) { return input.value; });
       try {
+        var actor = requireLookup("standing-actor","leadership");
         var result = await rpc("ops_save_department_planning", {
           p_session_token: state.session.session_token, p_department_id: value("standing-department"),
           p_group_counts: counts, p_active: el("standing-active").checked,
-          p_days_of_week: days, p_slot_codes: slots, p_actor_name: value("standing-actor")
+          p_days_of_week: days, p_slot_codes: slots, p_actor_name: actor.full_name
         });
         if (result.status !== "success") throw new Error(result.message || "The department setup was not saved.");
         await loadData(false); toast("Department setup saved.");
@@ -1735,22 +2073,38 @@
     });
 
     el("planner-board").addEventListener("click", async function (event) {
-      var button = event.target.closest(".planner-approve,.planner-decline"); if (!button) return;
-      var card = button.closest(".planner-card"); setBusy(button, true, "Saving...");
+      var button = event.target.closest(".planner-open-approve,.planner-confirm,.planner-cancel-approve,.planner-decline"); if (!button) return;
+      var card = button.closest(".planner-card");
+      var popover = card.querySelector(".planner-approval-popover");
+      if (button.classList.contains("planner-open-approve")) {
+        popover.hidden = false;
+        card.querySelector(".planner-primary-actions").hidden = true;
+        updatePlannerCardAvailability(card);
+        card.querySelector(".planner-slot").focus();
+        return;
+      }
+      if (button.classList.contains("planner-cancel-approve")) {
+        popover.hidden = true;
+        card.querySelector(".planner-primary-actions").hidden = false;
+        return;
+      }
+      setBusy(button, true, "Saving...");
       try {
-        if (!value("planner-actor")) throw new Error("Select or enter the person making this decision.");
+        var actor = requireLookup("planner-actor","leadership");
         var decline = button.classList.contains("planner-decline");
+        var note = decline ? window.prompt("Optional reason for rejecting this task:","") || "" : card.querySelector(".planner-notes").value;
+        if (decline && !window.confirm("Reject this department task?")) return;
         var allocations = all(".planner-group", card).map(function (input) { return { group_code: input.dataset.group, headcount: Number(input.value || 0) }; });
-        var result = await rpc("ops_plan_work_request_v2", {
+        var result = await rpc("ops_plan_work_request_v3", {
           p_session_token: state.session.session_token, p_request_id: card.dataset.request,
           p_decision: decline ? "declined" : "approved", p_slot_id: decline ? null : card.querySelector(".planner-slot").value || null,
           p_work_date: decline ? null : card.querySelector(".planner-work-date").value,
           p_allocated_headcount: decline ? null : Number(card.querySelector(".planner-allocation").value || 0),
-          p_allocations: decline ? [] : allocations, p_notes: card.querySelector(".planner-notes").value,
-          p_actor_name: value("planner-actor")
+          p_allocations: decline ? [] : allocations, p_notes: note,
+          p_actor_student_id: actor.student_id || actor.id
         });
         if (result.status !== "success") throw new Error(result.message || "The allocation could not be saved.");
-        await loadData(false); toast(decline ? "Task declined." : "Task approved, allocated and published.");
+        await loadData(false); toast(decline ? "Task rejected." : "Task approved, allocated and published.");
       } catch (error) { toast(error.message, true); }
       finally { setBusy(button, false); }
     });
@@ -1765,9 +2119,52 @@
       }
     });
 
+    el("planner-daily-button").addEventListener("click",function () { state.plannerView="daily"; renderVisualPlan(); });
+    el("planner-weekly-button").addEventListener("click",function () { state.plannerView="weekly"; el("planner-week").value=mondayFor(value("planner-day")||today()); renderVisualPlan(); });
+    el("planner-day").addEventListener("change",renderVisualPlan);
+    el("planner-week").addEventListener("change",function () { this.value=mondayFor(this.value||today()); renderVisualPlan(); });
+    el("visual-plan-board").addEventListener("click",function (event) {
+      var button=event.target.closest(".planner-move-button"); if(button) openPlannerMove(button.dataset.sessionId);
+    });
+    el("visual-plan-board").addEventListener("dragstart",function (event) {
+      var card=event.target.closest(".visual-task-card"); if(!card)return;
+      state.draggedSessionId=card.dataset.sessionId; card.classList.add("dragging");
+      if(event.dataTransfer){event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("text/plain",state.draggedSessionId);}
+    });
+    el("visual-plan-board").addEventListener("dragend",function (event) {
+      var card=event.target.closest(".visual-task-card"); if(card)card.classList.remove("dragging");
+      state.draggedSessionId=null; all(".drop-zone",el("visual-plan-board")).forEach(function(zone){zone.classList.remove("drag-over");});
+    });
+    el("visual-plan-board").addEventListener("dragover",function (event) {
+      var zone=event.target.closest(".drop-zone"); if(!zone)return; event.preventDefault(); zone.classList.add("drag-over");
+    });
+    el("visual-plan-board").addEventListener("dragleave",function (event) { var zone=event.target.closest(".drop-zone"); if(zone)zone.classList.remove("drag-over"); });
+    el("visual-plan-board").addEventListener("drop",function (event) {
+      var zone=event.target.closest(".drop-zone"); if(!zone)return; event.preventDefault(); zone.classList.remove("drag-over");
+      var sessionId=state.draggedSessionId || (event.dataTransfer&&event.dataTransfer.getData("text/plain"));
+      var session=findPlanSession(sessionId); if(!session)return;
+      var slotId=zone.dataset.dropSlot || session.slot_id;
+      movePlannedSession(sessionId,zone.dataset.dropDate,slotId,zone).catch(function(error){toast(error.message,true);});
+    });
+    el("planner-move-close").addEventListener("click",function(){el("planner-move-modal").hidden=true;});
+    el("planner-move-modal").addEventListener("click",function(event){if(event.target===this)this.hidden=true;});
+    el("planner-move-form").addEventListener("submit",function(event){
+      event.preventDefault(); var form=event.currentTarget;
+      movePlannedSession(value("planner-move-session-id"),value("planner-move-date"),value("planner-move-slot"),form).then(function(){el("planner-move-modal").hidden=true;}).catch(function(error){toast(error.message,true);});
+    });
+    el("person-lookup-close").addEventListener("click",closePersonLookup);
+    el("person-lookup-modal").addEventListener("click",function(event){if(event.target===this)closePersonLookup();});
+    el("person-lookup-form").addEventListener("submit",function(event){
+      event.preventDefault();
+      try{
+        var pending=state.personLookupResolve;if(!pending)return;
+        var person=requireLookup("person-lookup-input",pending.scope);state.personLookupResolve=null;el("person-lookup-modal").hidden=true;pending.resolve(person);
+      }catch(error){toast(error.message,true);}
+    });
+
     el("overview-sessions").addEventListener("click", async function (event) {
       var button = event.target.closest(".session-status"); if (!button) return; setBusy(button, true, "Saving...");
-      try { var person = window.prompt("Your name:", ""); if (!person) return; await command("update_session_status", { session_id: button.dataset.id, status: button.dataset.status, actor_name: person }); await loadData(false); toast("Session updated."); }
+      try { var input=button.closest(".data-card").querySelector(".session-actor"); var person=requireLookup(input,"department-member"); await command("update_session_status", { session_id: button.dataset.id, status: button.dataset.status, actor_name: person.full_name }); await loadData(false); toast("Session updated."); }
       catch (error) { toast(error.message, true); } finally { setBusy(button, false); }
     });
     el("notification-list").addEventListener("click", async function (event) {
@@ -1797,7 +2194,7 @@
     el("period-section").addEventListener("change", function () { el("period-report-form").hidden = true; });
     el("period-controls").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Generating...");
-      try { var departmentId = reportDepartmentId("period"); if (!departmentId) throw new Error("Choose Open Field or Greenhouses before generating the Horticulture report."); var result = await rpc("ops_generate_report", { p_session_token: state.session.session_token, p_report_type: value("period-type"), p_department_id: departmentId, p_period_start: value("period-start"), p_period_end: value("period-end") }); if (result.status !== "success") throw new Error(result.message || "Report could not be generated."); populatePeriodPreview(result); toast("Report generated from source records."); }
+      try { var departmentId = reportDepartmentId("period"); if (!departmentId) throw new Error("Choose a reporting section before generating this report."); var result = await rpc("ops_generate_report", { p_session_token: state.session.session_token, p_report_type: value("period-type"), p_department_id: departmentId, p_period_start: value("period-start"), p_period_end: value("period-end") }); if (result.status !== "success") throw new Error(result.message || "Report could not be generated."); populatePeriodPreview(result); toast("Report generated from source records."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
@@ -1807,15 +2204,14 @@
     el("transfer-form").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Recording...");
       var payload = { from_department_id: isDepartment() ? currentDepartmentId() : value("transfer-from"), to_department_id: value("transfer-to"), transfer_date: value("transfer-date"), reference: value("transfer-reference"), actor_name: value("transfer-actor"), notes: value("transfer-notes"), items: [{ item_name: value("transfer-item"), quantity: parseNumber(value("transfer-quantity")), unit: value("transfer-unit") }] };
-      try { await command("create_transfer", payload); await rememberName(payload.actor_name, payload.from_department_id); event.currentTarget.reset(); el("transfer-date").value = today(); await loadData(false); toast("Transfer recorded."); }
+      try { payload.actor_name=requireLookup("transfer-actor","student").full_name; await command("create_transfer", payload); event.currentTarget.reset(); el("transfer-date").value = today(); await loadData(false); toast("Transfer recorded."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
     el("transfer-list").addEventListener("click", async function (event) {
       var button = event.target.closest(".receive-transfer"); if (!button) return;
-      var person = window.prompt("Name of receiving person:", ""); if (!person) return;
       var notes = button.dataset.decision === "disputed" ? window.prompt("Reason for dispute:", "") : "";
-      try { await command("receive_transfer", { transfer_id: button.dataset.id, decision: button.dataset.decision, actor_name: person, notes: notes }); await loadData(false); toast("Transfer updated."); }
+      try { var person=await choosePerson("student","Choose receiving person"); await command("receive_transfer", { transfer_id: button.dataset.id, decision: button.dataset.decision, actor_name: person.full_name, notes: notes }); await loadData(false); toast("Transfer updated."); }
       catch (error) { toast(error.message, true); }
     });
 
@@ -1898,21 +2294,21 @@
       var reason = button.dataset.status === "returned" ? window.prompt("Why is this report being returned?", "") : "";
       if (button.dataset.status === "returned" && !reason) return;
       setBusy(button, true, "Saving...");
-      try { if (!value("reviewer-name")) throw new Error("Select or enter the reviewer name."); await command("transition_report", { report_id: button.dataset.id, target_status: button.dataset.status, reason: reason, actor_name: value("reviewer-name") }); await loadData(false); toast("Report moved to " + titleCase(button.dataset.status) + "."); }
+      try { var reviewer=requireLookup("reviewer-name","staff"); await command("transition_report", { report_id: button.dataset.id, target_status: button.dataset.status, reason: reason, actor_name: reviewer.full_name }); await loadData(false); toast("Report moved to " + titleCase(button.dataset.status) + "."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(button, false); }
     });
     el("management-action-form").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Creating...");
-      var payload = { department_id: value("action-department") || null, priority: value("action-priority"), summary: value("action-summary"), description: value("action-description"), owner_name: value("action-owner"), due_date: value("action-due-date") || null, actor_name: value("action-actor") || state.session.display_name, sync_to_jira: el("action-jira").checked };
-      try { await command("save_management_action", payload); event.currentTarget.reset(); await loadData(false); toast("Management action created."); }
+      var payload = { department_id: value("action-department") || null, priority: value("action-priority"), summary: value("action-summary"), description: value("action-description"), owner_name: value("action-owner"), due_date: value("action-due-date") || null, actor_name: value("action-actor"), sync_to_jira: el("action-jira").checked };
+      try { payload.owner_name=payload.owner_name?requireLookup("action-owner","student").full_name:""; payload.actor_name=requireLookup("action-actor","student").full_name; await command("save_management_action", payload); event.currentTarget.reset(); await loadData(false); toast("Management action created."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
 
     el("department-access-list").addEventListener("submit", async function (event) {
       var form = event.target.closest(".department-code-form"); if (!form) return; event.preventDefault(); setBusy(form, true, "Setting...");
-      try { var result=await rpc("ops_set_department_pin",{p_session_token:state.session.session_token,p_department_id:form.dataset.department,p_pin:form.querySelector('input[type="password"]').value,p_actor_name:form.querySelector(".code-actor").value||state.session.display_name}); if(result.status!=="success")throw new Error(result.message||"PIN could not be set."); form.reset(); await loadData(false); toast("Department PIN set."); }
+      try { var actor=requireLookup(form.querySelector(".code-actor"),"student"); var result=await rpc("ops_set_department_pin_v2",{p_session_token:state.session.session_token,p_department_id:form.dataset.department,p_pin:form.querySelector('input[type="password"]').value,p_actor_name:actor.full_name}); if(result.status!=="success")throw new Error(result.message||"PIN could not be set."); form.reset(); await loadData(false); toast("Department PIN set."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(form, false); }
     });
@@ -1927,6 +2323,14 @@
     el("work-date").value = addDays(today(), 1);
     el("work-date").min = addDays(today(), 1);
     el("work-date").max = addDays(today(), 120);
+    el("planner-day").value = today();
+    el("planner-day").min = today();
+    el("planner-day").max = addDays(today(),120);
+    el("planner-week").value = mondayFor(today());
+    el("planner-week").min = mondayFor(today());
+    el("planner-week").max = addDays(mondayFor(today()),112);
+    el("planner-move-date").min = today();
+    el("planner-move-date").max = addDays(today(),120);
     el("duty-week-start").value = mondayFor(today());
     el("duty-week-start").min = addDays(mondayFor(today()), -14);
     el("duty-week-start").max = addDays(mondayFor(today()), 1825);
@@ -1950,6 +2354,8 @@
       auth: { persistSession: false, autoRefreshToken: false }
     });
     bindEvents();
+    clearInterval(state.plannerTimer);
+    state.plannerTimer=setInterval(refreshPlannerLive,30000);
     try {
       await loadCatalog();
       if (restoreSession()) {

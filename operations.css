@@ -630,6 +630,58 @@ input:focus, select:focus, textarea:focus { border-color: var(--ops-green-700); 
   background: #fff8f7;
 }
 
+.public-board-link { margin-top: 10px; text-decoration: none; }
+.planner-view-toolbar { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+.planner-view-toolbar label { min-width: 180px; }
+.planner-view-toolbar .status-pill { margin-left: auto; }
+.segmented-control { display: inline-flex; padding: 4px; border: 1px solid var(--ops-line); border-radius: 12px; background: #f4f7f5; }
+.segmented-control button { padding: 9px 14px; border: 0; border-radius: 9px; color: var(--ops-muted); background: transparent; font: inherit; font-weight: 800; }
+.segmented-control button.active { color: #fff; background: var(--ops-green-700); box-shadow: 0 2px 8px rgba(18,61,43,.22); }
+.planner-layout { display: grid; grid-template-columns: minmax(290px, .75fr) minmax(0, 1.8fr); gap: 16px; align-items: start; }
+.pending-rail { position: sticky; top: 12px; max-height: calc(100vh - 30px); overflow: auto; }
+.pending-rail .planner-grid { grid-template-columns: 1fr; }
+.planner-card { box-shadow: 0 4px 14px rgba(20,55,40,.06); }
+.planner-approval-popover { margin-top: 14px; padding: 14px; border: 1px solid #b9d0c4; border-radius: 13px; background: #f7fbf8; }
+.planner-approval-popover[hidden] { display: none !important; }
+.task-location { color: #214d3c; }
+.named-members { padding: 9px 11px; border-radius: 9px; background: #edf6f1; }
+.visual-plan-board { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; align-items: stretch; overflow-x: auto; }
+.visual-plan-board.weekly { grid-template-columns: repeat(7,minmax(190px,1fr)); }
+.plan-column { min-height: 250px; padding: 10px; border: 1px dashed #b9c9c0; border-radius: 13px; background: #f8faf9; transition: background .15s,border-color .15s,transform .15s; }
+.plan-column.drag-over { border-color: var(--ops-green-700); background: #e9f5ee; transform: translateY(-2px); }
+.plan-column > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; padding: 2px 3px 8px; border-bottom: 1px solid var(--ops-line); }
+.plan-column > header span { display: grid; place-items: center; min-width: 25px; height: 25px; border-radius: 999px; color: #fff; background: var(--ops-green-700); font-size: .78rem; font-weight: 850; }
+.plan-column-cards { display: grid; gap: 9px; }
+.drop-placeholder { display: grid; place-items: center; min-height: 105px; color: #7c8d84; border: 1px dashed #d1dcd6; border-radius: 10px; font-size: .84rem; text-align: center; }
+.visual-task-card { padding: 12px; border: 1px solid #cbd9d1; border-radius: 11px; background: #fff; box-shadow: 0 3px 10px rgba(22,52,39,.08); cursor: grab; }
+.visual-task-card:active { cursor: grabbing; }
+.visual-task-card.dragging { opacity: .45; }
+.visual-task-card h4 { margin: 0 0 4px; font-size: .97rem; }
+.visual-task-card p { margin: 6px 0; font-size: .82rem; line-height: 1.35; }
+.visual-task-card .card-top p { margin: 0; color: var(--ops-muted); }
+.drag-handle { color: #7d8f86; font-size: 1.2rem; letter-spacing: -4px; }
+.members-layout { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(260px,.55fr); gap: 16px; align-items: start; }
+.member-add-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.35fr) auto; gap: 10px; align-items: end; }
+.member-editor { display: grid; gap: 8px; }
+.member-editor-row { display: grid; grid-template-columns: minmax(0,1fr) 140px auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--ops-line); border-radius: 11px; background: #fafcfb; }
+.member-editor-row span { display: grid; gap: 2px; }
+.member-editor-row small { color: var(--ops-muted); }
+.roster-help { position: sticky; top: 12px; }
+
+@media (max-width: 1050px) {
+  .planner-layout,.members-layout { grid-template-columns: 1fr; }
+  .pending-rail,.roster-help { position: static; max-height: none; }
+}
+
+@media (max-width: 760px) {
+  .planner-view-toolbar { align-items: stretch; }
+  .planner-view-toolbar .status-pill { margin-left: 0; }
+  .visual-plan-board,.visual-plan-board.weekly { grid-template-columns: repeat(7,minmax(82vw,1fr)); scroll-snap-type: x mandatory; }
+  .visual-plan-board:not(.weekly) { grid-template-columns: repeat(auto-fit,minmax(82vw,1fr)); }
+  .plan-column { scroll-snap-align: start; }
+  .member-add-grid,.member-editor-row { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 760px) {
   .service-toolbar {
     display: grid;

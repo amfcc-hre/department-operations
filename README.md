@@ -2,8 +2,9 @@
 
 The protected operating platform for AMFCC departments, HODs, Student Leadership, Management and School Administration.
 
-**Repository:** [amfcc-hre/department-operations](https://github.com/amfcc-hre/department-operations)  
-**Live site:** [AMFCC Department Operations](https://amfcc-hre.github.io/department-operations/)
+**Repository:** [amfcc-hre/amfcc_department_operations](https://github.com/amfcc-hre/amfcc_department_operations)  
+**Live site:** [AMFCC Department Operations](https://amfcc-hre.github.io/amfcc_department_operations/)  
+**Public POD board:** [Live POD Task Board](https://amfcc-hre.github.io/amfcc_department_operations/pod.html)
 
 ## Purpose
 
@@ -24,8 +25,10 @@ Kitchen staff and Clinic staff work belongs here. Student self-service meal chec
 
 - Every department has one shared four-digit PIN.
 - Individual staff PINs are not required.
-- Staff select or type their name only when recording work so the activity has an owner.
+- Name fields are exact database lookups. Registration numbers are not requested outside Student Services.
+- The staff directory is available only in reporting fields. Staff never appear in task, allocation or department-member lists.
 - Departments cannot request named students.
+- HODs can maintain their own student-member roster. Student Leadership, Management and School Administration can maintain every department roster.
 - School Administration can replace department PINs from the Department access section.
 - IT Administration can change every role and department PIN from the separate IT Administration site.
 
@@ -56,10 +59,8 @@ Department tool lists intentionally start empty. Users enter their own item name
 - Horticulture
 - Maintenance
 - Painting
-- Flowers
+- Flowers & Orchids
 - Poultry
-- Layers
-- Broilers
 - Building
 - Media
 - Chairs & Upholstery
@@ -70,7 +71,28 @@ Department tool lists intentionally start empty. Users enter their own item name
 - Fisheries
 - Transport
 - Finance / Accounts
-- Conference Centre
+- Conference Accommodation
+
+### Additional workspaces from the 2026-27 HOD register
+
+- Offices
+- Administrator's Office
+- Motor Mechanics
+- Grounds
+- Lawn Cutting
+- Security
+- Immigration
+- Chapel
+- Compassion House
+- Toilets
+- Student Accommodation
+- Legacy Cafe
+- Protocol
+- Sports
+- Generator
+- Flags
+
+Every workspace above has department-specific headings, planning language, stock or resource tools and activity records. Tool lists start blank and the department enters its own options.
 
 Finance / Accounts is currently limited to its departmental operations and spending records. This platform does not replace the school's accounting system.
 
@@ -82,6 +104,17 @@ Horticulture is the main department and uses one Horticulture PIN.
 - Greenhouses reports separately under Horticulture.
 - Greenhouse 1, Greenhouse 2 and Greenhouse 3 are subsections of Greenhouses.
 - Open Field and Greenhouses do not appear as separate login workspaces.
+
+### Poultry structure
+
+Poultry is the main department and uses one Poultry PIN.
+
+- Layers reports separately under Poultry.
+- Broilers reports separately under Poultry.
+- Layers and Broilers do not appear as separate login workspaces.
+- Department members, task requests, feed, supplies and operational tools are managed from the one Poultry workspace.
+
+Prayer, Church Representative, Orchard, International Student Representatives, Gongs, Hosting and Logistics are retired and do not appear as departments or login workspaces. Their historical records are preserved for audit purposes.
 
 ## Kitchen Operations
 
@@ -138,6 +171,8 @@ The AssetTiger button currently opens the standard sign-in page because a school
 - Student Leadership sees availability for 1st year men, 1st year ladies, 2nd year men and 2nd year ladies.
 - Group allocations use cohort labels. The task does not need to list every student name.
 - Approval, session choice, approved total and the four cohort allocations are completed on the same task card.
+- The planner has daily and weekly visual views. Published task cards can be dragged between sessions in the daily view and between days in the weekly view. The Move button provides an iPad-friendly alternative.
+- The planner refreshes the request and approved-work data every 30 seconds while Student Leadership is signed in.
 - Student Leadership can export the filtered task list as a CSV file for Excel.
 - Student Leadership can enter the Prefect on Duty and Senior Prefect on Duty for the current week or future weeks.
 - A department can be marked always on for every day and session, or for selected days and sessions. Its configured cohort counts are reserved before the remaining group numbers are shown.
@@ -145,6 +180,18 @@ The AssetTiger button currently opens the standard sign-in page because a school
 School Administration opens to Overview. Its navigation intentionally excludes Daily report, Meal scanner, Session requests, Department tools and Transfers. The overview links directly to open tasks, on-campus and off-campus students, pending and overdue passes, duty rosters, report attention, notifications, work attention and AssetTiger.
 
 Student Leadership does not review or approve department reports. Management and School Administration retain report attention and approval work.
+
+## Public live POD board
+
+`pod.html` is a read-only, no-PIN view for the person running the working day.
+
+- Shows the current Prefect on Duty and Senior Prefect on Duty.
+- Shows only approved or in-progress work for today, grouped by session.
+- Shows the task, department and work location.
+- Shows extra student allocations as anonymous totals such as `3 first year men`.
+- Shows configured department members by exact name.
+- Refreshes automatically every 15 seconds and includes a manual Refresh button.
+- Does not expose registration numbers, report data, notes, PINs or editing controls.
 
 ## Student Services operations
 
@@ -215,6 +262,9 @@ Department reports and management actions can be placed in the Jira outbox for s
 | `meal-checkin.html` | Full-screen protected Kitchen scanner |
 | `meal-checkin.js` | Kitchen card-scanning and check-in workflow |
 | `meal-checkin.css` | Full-screen scanner styling |
+| `pod.html` | Public read-only live POD task board |
+| `pod.js` | Live duty and approved-task feed |
+| `pod.css` | Responsive POD board styling |
 | `sw.js` | Service-worker caching for the Operations site |
 | `manifest.webmanifest` | Installable web-app details |
 | `shared_config.js` | Supabase project URL and publishable key |
@@ -222,7 +272,7 @@ Department reports and management actions can be placed in the Jira outbox for s
 
 ## Deployment with GitHub Pages
 
-1. Open the existing public repository `department-operations` under the `amfcc-hre` account.
+1. Open the existing public repository `amfcc_department_operations` under the `amfcc-hre` account.
 2. Upload every file from this folder to the repository root.
 3. Keep all filenames and folder levels unchanged.
 4. Open **Settings > Pages** in GitHub.
@@ -235,18 +285,22 @@ The Supabase database migrations are already deployed. Do not run the SQL refere
 
 ## First-use checks
 
-1. Sign in as Student Leadership and confirm the four-digit PIN works.
-2. Sign in as School Administration and confirm fee status and settings are visible.
-3. Sign in to a normal department and submit a test work request without choosing a session.
-4. Sign in to Horticulture and confirm one PIN opens the workspace with Open Field and Greenhouses report choices.
-5. Sign in to Kitchen and confirm Meal service opens first.
-6. Scan a test student card and confirm the scanner becomes ready for the next card.
-7. Sign in to Clinic and confirm the Clinic register opens first.
-8. Confirm a next-day department request is accepted before 6:00 pm and becomes Unexpected work after the deadline.
-9. Confirm Holiday Mode and Conference Mode appear as separate settings.
-10. Confirm Student Leadership cannot see fee information or confidential Clinic notes.
-11. In each Student services list, test the gender, class and campus-status filters together.
-12. Sign in to IT Department, open AssetTiger and Bitwarden, and confirm both launch in separate tabs without leaving the Operations session.
+1. Open `pod.html` without a PIN and confirm today's POD, Senior POD and approved work appear.
+2. Sign in as Student Leadership and confirm the four-digit PIN works.
+3. Sign in as School Administration and confirm fee status and settings are visible.
+4. Sign in to a normal department and submit a test work request without choosing a session.
+5. Sign in to Horticulture and confirm one PIN opens the workspace with Open Field and Greenhouses report choices.
+6. Sign in to Poultry and confirm one PIN opens the workspace with Layers and Broilers report choices.
+7. Sign in to Kitchen and confirm Meal service opens first.
+8. Scan a test student card and confirm the scanner becomes ready for the next card.
+9. Sign in to Clinic and confirm the Clinic register opens first.
+9. Confirm a next-day department request is accepted before 6:00 pm and becomes Unexpected work after the deadline.
+10. Confirm Holiday Mode and Conference Mode appear as separate settings.
+11. Confirm Student Leadership cannot see fee information or confidential Clinic notes.
+12. In each Student services list, test the gender, class and campus-status filters together.
+13. In Student Leadership, switch between daily and weekly planner views, then move a test task by drag and drop and by the Move button.
+14. Open Department members and confirm an HOD can edit only their own roster while Student Leadership, Management and School Administration can edit any roster.
+15. Sign in to IT Department, open AssetTiger and Bitwarden, and confirm both launch in separate tabs without leaving the Operations session.
 
 ## Related repositories
 

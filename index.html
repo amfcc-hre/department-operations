@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css?v=7">
+  <link rel="stylesheet" href="operations.css?v=9">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -42,6 +42,7 @@
         <input id="access-code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
         <button class="button primary wide" type="submit">Open workspace</button>
       </form>
+      <a class="button secondary wide public-board-link" href="pod.html">Open live POD task board</a>
       <p class="privacy-note">Departments share one workspace login. Staff select or enter their name only when recording work. Student names are kept out of Jira.</p>
     </section>
   </main>
@@ -70,6 +71,7 @@
       <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="overview" class="active">Overview</button>
       <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
+      <button type="button" data-view="members" data-roles="department,student_leadership,management,administrator">Department members</button>
       <button type="button" data-view="daily-report" data-roles="department,management">Daily report</button>
       <button type="button" data-view="period-report" data-roles="department,management">Weekly / monthly</button>
       <button type="button" data-view="tools" data-roles="department,management">Department tools</button>
@@ -193,7 +195,8 @@
       <form id="work-request-form" class="panel form-grid simple-task-form" data-roles="department">
         <div class="span-2 form-intro"><strong>Tell Student Leadership what needs doing.</strong><span>Choose the working day, not a session. Student Leadership will allocate the time and student groups.</span></div>
         <label class="span-2">What work is needed?<input id="work-title" maxlength="180" required placeholder="Example: Weed the tomato beds"></label>
-        <label class="span-2">Instructions or notes<textarea id="work-description" rows="3" placeholder="Where is the work and what should be completed?"></textarea></label>
+        <label class="span-2">Instructions or notes<textarea id="work-description" rows="3" placeholder="What should be completed?"></textarea></label>
+        <label class="span-2">Where is the work?<input id="work-location" maxlength="180" required placeholder="Example: Tomato beds behind Greenhouse 2"></label>
         <label>Working day<input id="work-date" type="date" required></label>
         <label class="check-row"><input id="work-unexpected" type="checkbox"> Unexpected task for today</label>
         <label>Priority<select id="work-priority"><option value="normal">Normal</option><option value="important">Important</option><option value="crucial">Crucial</option></select></label>
@@ -201,7 +204,7 @@
         <label>Repeat<select id="work-cadence"><option value="once">Once only</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="monthly">Every month</option><option value="quarterly">Every quarter</option></select></label>
         <label>Extra students needed<input id="work-extra-people" type="number" min="0" max="100" value="0"><span class="field-help">Do not include names. Your department members are counted automatically.</span></label>
         <div id="department-member-summary" class="callout span-2">Department members: not configured yet. Student Leadership can enter the four cohort counts under Standing departments.</div>
-        <label>Submitted by<input id="work-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <label>Submitted by<input id="work-actor" list="department-member-options" data-lookup="department-member" required placeholder="Start typing your exact name"></label>
         <div class="form-actions"><button class="button primary" type="submit">Submit task</button></div>
       </form>
 
@@ -209,10 +212,10 @@
         <summary><span><strong>Weekly leadership on duty</strong><small>Enter this week or any future week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
         <form id="duty-roster-form" class="form-grid details-body">
           <label>Week beginning Monday<input id="duty-week-start" type="date" required></label>
-          <label>Prefect on Duty<input id="duty-prefect" list="staff-name-options" required></label>
-          <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="staff-name-options" required></label>
+          <label>Prefect on Duty<input id="duty-prefect" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="senior-prefect-options" data-lookup="senior" required placeholder="Choose one of four Senior Prefects"></label>
           <label>Note<input id="duty-notes" placeholder="Optional"></label>
-          <label>Entered by<input id="duty-actor" list="staff-name-options" required></label>
+          <label>Entered by<input id="duty-actor" list="leadership-name-options" data-lookup="leadership" required></label>
           <div class="form-actions"><button class="button primary" type="submit">Save week</button></div>
         </form>
         <div id="duty-roster-list" class="compact-list details-body"></div>
@@ -220,28 +223,44 @@
 
       <section id="leadership-planning" data-roles="student_leadership,management">
         <div class="planning-toolbar panel">
-          <div><strong>Pending work</strong><span>Approve the number, choose the session and split the total across the four groups on the same card.</span></div>
-          <label>Planned by<input id="planner-actor" list="staff-name-options" placeholder="Select or type your name" required></label>
+          <div><strong>Live work planner</strong><span>Approve requests, then drag published cards between days or sessions.</span></div>
+          <label>Planned by<input id="planner-actor" list="leadership-name-options" data-lookup="leadership" placeholder="Search Student Leadership" required></label>
         </div>
         <div id="group-capacity-cards" class="summary-grid compact"></div>
-        <div id="planner-board" class="planner-grid empty-state">No pending tasks.</div>
+        <div class="planner-view-toolbar panel">
+          <div class="segmented-control" role="group" aria-label="Planner view"><button id="planner-daily-button" class="active" type="button">Daily plan</button><button id="planner-weekly-button" type="button">Weekly plan</button></div>
+          <label id="planner-day-field">Day<input id="planner-day" type="date"></label>
+          <label id="planner-week-field" hidden>Week beginning<input id="planner-week" type="date"></label>
+          <span id="planner-live-state" class="status-pill green">Live</span>
+        </div>
+        <div class="planner-layout">
+          <aside class="pending-rail panel">
+            <div class="panel-heading"><div><h3>Requested tasks</h3><p>Approve or reject without leaving the planner.</p></div><span id="pending-task-count" class="count-badge">0</span></div>
+            <div id="planner-board" class="planner-grid empty-state">No pending tasks.</div>
+          </aside>
+          <section class="visual-plan-panel panel" aria-labelledby="visual-plan-heading">
+            <div class="panel-heading"><div><h3 id="visual-plan-heading">Daily plan</h3><p id="visual-plan-help">Drag a task to another session. Use Move on an iPad if dragging is inconvenient.</p></div></div>
+            <div id="visual-plan-board" class="visual-plan-board empty-state">No approved tasks in this view.</div>
+          </section>
+        </div>
 
         <details id="standing-departments-panel" class="panel task-setup-panel">
           <summary><span><strong>Standing departments</strong><small>Reserve department members every day or only in selected sessions.</small></span><span class="mini-summary">Set up once</span></summary>
           <form id="standing-department-form" class="form-grid details-body">
             <label class="span-2">Department<select id="standing-department" required></select></label>
-            <fieldset class="span-2 cohort-fieldset"><legend>Department members by group</legend>
-              <label>1st year men<input id="standing-year1-men" type="number" min="0" max="100" value="0"></label>
-              <label>1st year ladies<input id="standing-year1-ladies" type="number" min="0" max="100" value="0"></label>
-              <label>2nd year men<input id="standing-year2-men" type="number" min="0" max="100" value="0"></label>
-              <label>2nd year ladies<input id="standing-year2-ladies" type="number" min="0" max="100" value="0"></label>
+            <fieldset class="span-2 cohort-fieldset"><legend>Members from the department roster</legend>
+              <label>1st year men<input id="standing-year1-men" type="number" min="0" max="100" value="0" readonly></label>
+              <label>1st year ladies<input id="standing-year1-ladies" type="number" min="0" max="100" value="0" readonly></label>
+              <label>2nd year men<input id="standing-year2-men" type="number" min="0" max="100" value="0" readonly></label>
+              <label>2nd year ladies<input id="standing-year2-ladies" type="number" min="0" max="100" value="0" readonly></label>
+              <p class="field-help span-2">These figures update automatically when authorised users edit Department members.</p>
             </fieldset>
             <label class="check-row span-2"><input id="standing-active" type="checkbox"> This department is always on for the selected days and sessions</label>
             <fieldset class="span-2 choice-fieldset"><legend>Days</legend>
               <label><input type="checkbox" name="standing-day" value="1" checked> Mon</label><label><input type="checkbox" name="standing-day" value="2" checked> Tue</label><label><input type="checkbox" name="standing-day" value="3" checked> Wed</label><label><input type="checkbox" name="standing-day" value="4" checked> Thu</label><label><input type="checkbox" name="standing-day" value="5" checked> Fri</label><label><input type="checkbox" name="standing-day" value="6" checked> Sat</label><label><input type="checkbox" name="standing-day" value="7" checked> Sun</label>
             </fieldset>
             <fieldset id="standing-slot-options" class="span-2 choice-fieldset"><legend>Sessions</legend><p class="field-help">Leave every session unticked to reserve the department for every session.</p></fieldset>
-            <label>Updated by<input id="standing-actor" list="staff-name-options" required></label>
+            <label>Updated by<input id="standing-actor" list="leadership-name-options" data-lookup="leadership" required></label>
             <div class="form-actions"><button class="button primary" type="submit">Save department setup</button></div>
           </form>
           <div id="standing-department-list" class="compact-list details-body"></div>
@@ -255,6 +274,29 @@
       <div id="task-list" class="card-list empty-state">No tasks yet.</div>
     </section>
 
+    <section id="view-members" class="view" aria-labelledby="members-heading">
+      <div class="view-heading"><div><p class="eyebrow">Exact student roster</p><h2 id="members-heading">Department members</h2><p class="muted">HODs can edit their own department. Student Leadership, Management and School Administration can edit any department.</p></div></div>
+      <div class="members-layout">
+        <form id="department-members-form" class="panel form-stack">
+          <label class="admin-department-field">Department<select id="members-department" required></select></label>
+          <label id="members-hod-confirm-field">Confirming HOD<input id="members-hod-confirm" list="department-hod-options" data-lookup="department-hod" placeholder="Search the current HOD"></label>
+          <div class="member-add-grid">
+            <label>Find an active student<input id="member-lookup" list="student-name-options" data-lookup="student" placeholder="Start typing a name"></label>
+            <label>Role<select id="member-role"><option value="member">Member</option><option value="hod">HOD</option></select></label>
+            <button id="add-department-member" class="button secondary" type="button">Add person</button>
+          </div>
+          <div id="department-member-editor" class="member-editor empty-state">No members listed.</div>
+          <div class="form-actions"><button class="button primary" type="submit">Save department members</button></div>
+        </form>
+        <aside class="panel roster-help">
+          <h3>How this affects tasks</h3>
+          <p>Every listed department member is added to that department's requested manpower automatically.</p>
+          <p>The live POD board lists department members by name. Extra students remain anonymous group totals such as “3 first year men”.</p>
+          <div class="callout"><strong>Unmatched names:</strong> Bruno Mombe and Zawadi were not added because neither has an exact active student record. Add them here once the correct database records are confirmed.</div>
+        </aside>
+      </div>
+    </section>
+
     <section id="view-requests" class="view" aria-labelledby="requests-heading">
       <div class="view-heading"><div><p class="eyebrow">People and time</p><h2 id="requests-heading">Session requests</h2></div></div>
       <form id="request-form" class="panel form-grid department-entry">
@@ -265,7 +307,7 @@
         <label>People requested<input id="request-headcount" type="number" min="1" max="100" value="1" required><span class="field-help">Include your own department members. Do not request names.</span></label>
         <label class="span-2">Tasks for this session<select id="request-tasks" multiple size="5"></select><span class="field-help">Select one or more. On an iPad, tap each task while holding the on-screen multi-select control if shown.</span></label>
         <label class="span-2">What Student Leadership should know<textarea id="request-notes" rows="3"></textarea></label>
-        <label>Requested by<input id="request-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+        <label>Requested by<input id="request-actor" list="student-name-options" data-lookup="student" required placeholder="Search exact name"></label>
         <div class="form-actions"><button class="button primary" type="submit">Send request</button></div>
       </form>
       <div id="request-rules" class="callout">Next-day planned requests close at 6:00 pm. Use Unexpected task only for genuinely unforeseen work.</div>
@@ -276,11 +318,11 @@
       <div class="view-heading"><div><p class="eyebrow">One report, reused everywhere</p><h2 id="daily-heading">Daily department report</h2></div><span id="daily-draft-state" class="status-pill neutral">Not saved</span></div>
       <form id="daily-report-form" class="panel report-form form-grid">
         <label class="admin-department-field">Department<select id="daily-department"></select></label>
-        <label id="daily-section-field" hidden>Reporting section<select id="daily-section"></select><small class="field-help">Open Field and Greenhouses submit separately under Horticulture.</small></label>
+        <label id="daily-section-field" hidden>Reporting section<select id="daily-section"></select><small id="daily-section-help" class="field-help"></small></label>
         <label>Report date<input id="daily-date" type="date" required></label>
-        <div id="daily-horticulture-note" class="callout span-2" hidden><strong>Horticulture reporting:</strong> use one Horticulture PIN, then choose Open Field or Greenhouses. Greenhouse 1, 2 and 3 are all included within Greenhouses.</div>
-        <label>Prepared by<input id="daily-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
-        <label>Staff on duty<input id="daily-staff" list="staff-name-options" placeholder="Names or team"></label>
+        <div id="daily-reporting-note" class="callout span-2" hidden><strong id="daily-reporting-note-title"></strong> <span id="daily-reporting-note-copy"></span></div>
+        <label>Prepared by<input id="daily-actor" list="staff-name-options" data-lookup="staff" required placeholder="Search staff directory"></label>
+        <label>Staff on duty<input id="daily-staff" list="staff-name-options" data-lookup="staff" placeholder="Search staff directory"></label>
         <label class="span-2">Work completed<textarea id="daily-completed" rows="4" placeholder="What was completed, produced, delivered or checked?"></textarea></label>
         <label class="span-2">Work still open<textarea id="daily-open" rows="3" placeholder="What carries forward?"></textarea></label>
         <label class="span-2">Challenges or exceptions<textarea id="daily-challenges" rows="3"></textarea></label>
@@ -307,14 +349,14 @@
       <form id="period-controls" class="panel filter-row">
         <label>Report type<select id="period-type"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
         <label class="admin-department-field">Department<select id="period-department"></select></label>
-        <label id="period-section-field" hidden>Reporting section<select id="period-section"></select></label>
+        <label id="period-section-field" hidden>Reporting section<select id="period-section"></select><small id="period-section-help" class="field-help"></small></label>
         <label>Start<input id="period-start" type="date" required></label>
         <label>End<input id="period-end" type="date" required></label>
         <button class="button primary" type="submit">Generate</button>
       </form>
       <form id="period-report-form" class="panel report-form form-grid" hidden>
         <div id="period-source-summary" class="callout span-2"></div>
-        <label>Prepared by<input id="period-actor" list="staff-name-options" required></label>
+        <label>Prepared by<input id="period-actor" list="staff-name-options" data-lookup="staff" required></label>
         <label>Overall status<select id="period-status"><option value="green">Green</option><option value="amber">Amber</option><option value="red">Red</option></select></label>
         <label class="span-2">Summary<textarea id="period-summary" rows="3"></textarea></label>
         <label class="span-2">Work completed<textarea id="period-completed" rows="5"></textarea></label>
@@ -341,7 +383,7 @@
           <label><span id="tool-plan-title-label">Title</span><input id="tool-plan-title" required placeholder="Enter the plan"></label>
           <div class="filter-row"><label>Starts<input id="tool-plan-start" type="date" required></label><label>Ends<input id="tool-plan-end" type="date" required></label></div>
           <label>Details<textarea id="tool-plan-details" rows="4"></textarea></label>
-          <label>Recorded by<input id="tool-plan-actor" list="staff-name-options" required></label>
+          <label>Recorded by<input id="tool-plan-actor" list="student-name-options" data-lookup="student" required></label>
           <button class="button primary" type="submit">Save plan</button>
         </form>
         <form id="tool-stock-item-form" class="panel form-stack">
@@ -352,7 +394,7 @@
           <label><span id="tool-stock-unit-label">Unit</span><input id="tool-stock-unit" required placeholder="Enter a unit"></label>
           <label>Opening quantity<input id="tool-stock-opening" type="number" min="0" step="0.01"></label>
           <label>Low-stock level<input id="tool-stock-reorder" type="number" min="0" step="0.01"></label>
-          <label>Recorded by<input id="tool-stock-actor" list="staff-name-options" required></label>
+          <label>Recorded by<input id="tool-stock-actor" list="student-name-options" data-lookup="student" required></label>
           <button class="button primary" type="submit">Add item</button>
         </form>
         <form id="tool-log-form" class="panel form-stack">
@@ -362,7 +404,7 @@
           <label><span id="tool-log-title-label">Title</span><input id="tool-log-title" required></label>
           <div class="filter-row"><label><span id="tool-log-quantity-label">Quantity</span><input id="tool-log-quantity" type="number" step="0.01"></label><label><span id="tool-log-unit-label">Unit</span><input id="tool-log-unit"></label></div>
           <label>Notes<textarea id="tool-log-notes" rows="3"></textarea></label>
-          <label>Recorded by<input id="tool-log-actor" list="staff-name-options" required></label>
+          <label>Recorded by<input id="tool-log-actor" list="student-name-options" data-lookup="student" required></label>
           <button class="button primary" type="submit">Save record</button>
         </form>
       </div>
@@ -375,7 +417,7 @@
             <label>Quantity<input id="tool-stock-quantity" type="number" min="0.01" step="0.01" required></label>
             <label>Date<input id="tool-stock-date" type="date" required></label>
             <label>Notes<input id="tool-stock-notes"></label>
-            <label>Recorded by<input id="tool-movement-actor" list="staff-name-options" required></label>
+            <label>Recorded by<input id="tool-movement-actor" list="student-name-options" data-lookup="student" required></label>
             <button class="button secondary" type="submit">Record movement</button>
           </form>
           <div id="tool-stock-list" class="card-list empty-state">No stock items yet.</div>
@@ -394,7 +436,7 @@
         <label>Item<input id="transfer-item" required></label>
         <label>Quantity<input id="transfer-quantity" type="number" min="0.01" step="0.01" required></label>
         <label>Unit<input id="transfer-unit" placeholder="kg, tray, crate, item" required></label>
-        <label>Sent by<input id="transfer-actor" list="staff-name-options" required></label>
+        <label>Sent by<input id="transfer-actor" list="student-name-options" data-lookup="student" required></label>
         <label class="span-2">Notes<textarea id="transfer-notes" rows="2"></textarea></label>
         <div class="form-actions span-2"><button class="button primary" type="submit">Record transfer</button></div>
       </form>
@@ -508,7 +550,7 @@
       <section id="ss-tab-settings" class="student-service-section panel" data-ss-admin-only>
         <div class="panel-heading"><div><h3>School Administration settings</h3><p>Conference Mode is an overlay, not a standalone calendar mode.</p></div></div>
         <form id="ss-settings-form" class="form-grid">
-          <label>Recorded by<input id="ss-settings-actor" list="staff-name-options" required placeholder="Select or type your name"></label>
+          <label>Recorded by<input id="ss-settings-actor" list="student-name-options" data-lookup="student" required placeholder="Search exact name"></label>
           <label>School calendar<select id="ss-base-mode"><option value="normal">School Term Mode</option><option value="holiday">Holiday Mode</option></select></label>
           <label class="check-row span-2 conference-check"><input id="ss-conference-mode" type="checkbox"> Add Conference Mode to the selected school calendar</label>
           <label class="check-row span-2"><input id="ss-pilot-mode" type="checkbox"> Run the electronic gate-pass pilot alongside paper passes</label>
@@ -522,7 +564,7 @@
 
     <section id="view-reports" class="view" aria-labelledby="reports-heading">
       <div class="view-heading"><div><p class="eyebrow">Verification and approval</p><h2 id="reports-heading">Department reports</h2></div></div>
-      <div class="filter-row"><label>Status<select id="report-review-filter"><option value="review">Needs review</option><option value="all">All</option><option value="approved">Approved / locked</option></select></label><label>Reviewed by<input id="reviewer-name" list="staff-name-options" placeholder="Select or type your name"></label></div>
+      <div class="filter-row"><label>Status<select id="report-review-filter"><option value="review">Needs review</option><option value="all">All</option><option value="approved">Approved / locked</option></select></label><label>Reviewed by<input id="reviewer-name" list="staff-name-options" data-lookup="staff" placeholder="Search staff directory"></label></div>
       <div id="report-review-list" class="card-list empty-state">No reports need review.</div>
       <article class="panel management-action-panel">
         <div class="panel-heading"><h3>Create management action</h3></div>
@@ -531,9 +573,9 @@
           <label>Priority<select id="action-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
           <label class="span-2">Action<input id="action-summary" required></label>
           <label class="span-2">Details<textarea id="action-description" rows="3"></textarea></label>
-          <label>Owner<input id="action-owner" list="staff-name-options"></label>
+          <label>Owner<input id="action-owner" list="student-name-options" data-lookup="student"></label>
           <label>Due date<input id="action-due-date" type="date"></label>
-          <label>Recorded by<input id="action-actor" list="staff-name-options"></label>
+          <label>Recorded by<input id="action-actor" list="student-name-options" data-lookup="student" required></label>
           <label class="check-row"><input id="action-jira" type="checkbox"> Send to Jira now</label>
           <div class="form-actions span-2"><button class="button primary" type="submit">Create action</button></div>
         </form>
@@ -589,6 +631,29 @@
     </div>
 
     <datalist id="staff-name-options"></datalist>
+    <datalist id="student-name-options"></datalist>
+    <datalist id="leadership-name-options"></datalist>
+    <datalist id="senior-prefect-options"></datalist>
+    <datalist id="department-member-options"></datalist>
+    <datalist id="department-hod-options"></datalist>
+
+    <div id="planner-move-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="planner-move-title">
+      <form id="planner-move-form" class="ops-modal-card form-stack">
+        <div class="panel-heading"><div><p class="eyebrow">Move approved task</p><h2 id="planner-move-title">Choose day and session</h2></div><button id="planner-move-close" class="button quiet" type="button">Close</button></div>
+        <input id="planner-move-session-id" type="hidden">
+        <label>Work day<input id="planner-move-date" type="date" required></label>
+        <label>Session<select id="planner-move-slot" required></select></label>
+        <button class="button primary" type="submit">Move task</button>
+      </form>
+    </div>
+
+    <div id="person-lookup-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="person-lookup-title">
+      <form id="person-lookup-form" class="ops-modal-card form-stack">
+        <div class="panel-heading"><div><p class="eyebrow">Exact database name</p><h2 id="person-lookup-title">Choose person</h2></div><button id="person-lookup-close" class="button quiet" type="button">Close</button></div>
+        <label>Name<input id="person-lookup-input" list="student-name-options" data-lookup="student" required placeholder="Start typing a name"></label>
+        <button class="button primary" type="submit">Use this person</button>
+      </form>
+    </div>
   </div>
 
   <template id="metric-row-template">
@@ -604,6 +669,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=7"></script>
+  <script src="operations.js?v=9"></script>
 </body>
 </html>

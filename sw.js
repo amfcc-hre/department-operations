@@ -1,8 +1,9 @@
-const CACHE='amfcc-department-operations-v7-simple-planning';
+const CACHE='amfcc-department-operations-v9-poultry-hierarchy';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
-  './meal-checkin.html','./meal-checkin.css','./meal-checkin.js'
+  './meal-checkin.html','./meal-checkin.css','./meal-checkin.js',
+  './pod.html','./pod.css','./pod.js'
 ];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>Promise.all(CORE.map(url=>cache.add(new Request(url,{cache:'reload'})).catch(()=>null)))).then(()=>self.skipWaiting()));
