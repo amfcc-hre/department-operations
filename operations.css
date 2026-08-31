@@ -668,6 +668,60 @@ input:focus, select:focus, textarea:focus { border-color: var(--ops-green-700); 
 .member-editor-row small { color: var(--ops-muted); }
 .roster-help { position: sticky; top: 12px; }
 
+.duty-assignment-fieldset {
+  display: grid;
+  grid-template-columns: minmax(220px,.7fr) minmax(320px,1.3fr);
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--ops-line);
+  border-radius: 14px;
+  background: #f8fbf9;
+}
+
+.duty-assignment-fieldset legend {
+  padding: 0 7px;
+  color: var(--ops-green-950);
+  font-weight: 900;
+}
+
+.duty-person-add {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.duty-person-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-height: 58px;
+}
+
+.duty-person-list.empty-state {
+  place-items: center;
+  padding: 14px;
+}
+
+.duty-person-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ops-line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.duty-person-row span { display: grid; gap: 2px; }
+.duty-person-row small { color: var(--ops-muted); }
+.duty-history-list { margin-top: 16px; }
+.duty-week-detail { color: var(--ops-muted); line-height: 1.45; }
+.gate-slot-stack { display: grid; gap: 3px; }
+.gate-slot-stack small { color: var(--ops-muted); }
+
 @media (max-width: 1050px) {
   .planner-layout,.members-layout { grid-template-columns: 1fr; }
   .pending-rail,.roster-help { position: static; max-height: none; }
@@ -679,7 +733,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--ops-green-700); 
   .visual-plan-board,.visual-plan-board.weekly { grid-template-columns: repeat(7,minmax(82vw,1fr)); scroll-snap-type: x mandatory; }
   .visual-plan-board:not(.weekly) { grid-template-columns: repeat(auto-fit,minmax(82vw,1fr)); }
   .plan-column { scroll-snap-align: start; }
-  .member-add-grid,.member-editor-row { grid-template-columns: 1fr; }
+  .member-add-grid,.member-editor-row,.duty-assignment-fieldset,.duty-person-add { grid-template-columns: 1fr; }
+  .duty-person-row { align-items: flex-start; flex-direction: column; }
 }
 
 @media (max-width: 760px) {

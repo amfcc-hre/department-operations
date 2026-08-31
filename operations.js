@@ -8,6 +8,8 @@
     data: null,
     groups: { groups: [], allocations: [], holiday_mode: false },
     planning: { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] },
+    duties: { current_week: null, weeks: [], gate_assignments: [], permissions: {} },
+    serviceDutyDraft: { week_start: null, kitchen_people: [], toilet_people: [] },
     plannerView: "daily",
     editingRoster: [],
     editingRosterDepartmentId: null,
@@ -148,6 +150,8 @@
   function isConference() { return !!(state.mode && state.mode.conference_mode); }
   function isKitchenWorkspace() { return isDepartment() && currentDepartmentSlug() === "kitchen"; }
   function isClinicWorkspace() { return isDepartment() && currentDepartmentSlug() === "clinic"; }
+  function isSecurityWorkspace() { return isDepartment() && currentDepartmentSlug() === "security"; }
+  function hasDutiesWorkspace() { return isLeadership() || isManagement() || isSecurityWorkspace(); }
   function peopleDirectory() {
     return state.data && state.data.people_directory && state.data.people_directory.status === "success"
       ? state.data.people_directory : { students: [], staff: [], leadership: [], department_members: [] };
@@ -218,6 +222,7 @@
   function workspaceDefaultView() {
     if (isKitchenWorkspace()) return "meal-service";
     if (isClinicWorkspace()) return "clinic-service";
+    if (isSecurityWorkspace()) return "duties";
     return isDepartment() ? "tools" : "overview";
   }
 
@@ -336,7 +341,7 @@
     });
     all("[data-department-slug]").forEach(function (node) {
       var roleAllowed = !node.dataset.roles || node.dataset.roles.split(",").indexOf(role) >= 0;
-      var departmentAllowed = role === "administrator" || (role === "department" && currentDepartmentSlug() === node.dataset.departmentSlug);
+      var departmentAllowed = role !== "department" || currentDepartmentSlug() === node.dataset.departmentSlug;
       node.hidden = !roleAllowed || !departmentAllowed;
     });
     var overviewButton = el("main-nav").querySelector('[data-view="overview"]');
@@ -352,8 +357,8 @@
       : role === "student_leadership"
       ? "Approve, allocate and publish pending work from the same page."
       : role === "administrator"
-      ? "View and export the school task list, and maintain the weekly duty roster."
-      : "Track open work and maintain the weekly duty roster.";
+      ? "View and export the school task list."
+      : "Track open work and maintain the weekly duty roster from Duties.";
     var active = el("main-nav").querySelector("button.active");
     applyOperatingModeVisibility();
     if (active && active.hidden && state.data) switchView(workspaceDefaultView());
@@ -397,6 +402,8 @@
     state.data = null;
     state.studentServices = null;
     state.planning = { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] };
+    state.duties = { current_week: null, weeks: [], gate_assignments: [], permissions: {} };
+    state.serviceDutyDraft = { week_start: null, kitchen_people: [], toilet_people: [] };
     state.studentEdit = null;
     state.passReview = null;
     sessionStorage.removeItem("amfcc_ops_session");
@@ -423,6 +430,11 @@
       p_from_week: mondayFor(today()),
       p_to_week: addDays(mondayFor(today()), 120)
     });
+    state.duties = hasDutiesWorkspace() ? await rpc("ops_duties_dashboard", {
+      p_session_token: state.session.session_token,
+      p_from_week: mondayFor(today()),
+      p_to_week: addDays(mondayFor(today()), 120)
+    }) : { current_week: mondayFor(today()), weeks: [], gate_assignments: [], permissions: {} };
     (state.data.session_requests || []).forEach(function (request) {
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
     });
@@ -441,9 +453,10 @@
       var data=await rpc("ops_bootstrap_v2",{p_session_token:state.session.session_token,p_from_date:from,p_to_date:addDays(from,62)});
       var groups=await rpc("ops_group_planner",{p_session_token:state.session.session_token,p_from_date:from,p_to_date:addDays(from,62)});
       var planning=await rpc("ops_planning_dashboard_v2",{p_session_token:state.session.session_token,p_from_week:mondayFor(today()),p_to_week:addDays(mondayFor(today()),120)});
-      state.data=data;state.groups=groups;state.planning=planning;
+      var duties=hasDutiesWorkspace()?await rpc("ops_duties_dashboard",{p_session_token:state.session.session_token,p_from_week:mondayFor(today()),p_to_week:addDays(mondayFor(today()),120)}):state.duties;
+      state.data=data;state.groups=groups;state.planning=planning;state.duties=duties;
       (state.data.session_requests||[]).forEach(function(request){request.request_kind=(state.groups.request_kinds||{})[request.id]||"planned";});
-      populateWorkspaceInputs();renderSummary();renderDutyRoster();renderTasks();renderDepartmentMemberSummary();renderMembersWorkspace();renderRequests();renderPlanner();renderStandingDepartments();renderOverviewSessions();
+      populateWorkspaceInputs();renderSummary();renderDutyRoster();renderDutiesWorkspace();renderTasks();renderDepartmentMemberSummary();renderMembersWorkspace();renderRequests();renderPlanner();renderStandingDepartments();renderOverviewSessions();
       el("planner-live-state").textContent="Live · "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
       el("planner-live-state").className="status-pill green";
     } catch(error) {
@@ -590,6 +603,105 @@
     el("duty-roster-list").innerHTML = duties.length ? duties.map(function (duty) {
       return '<button type="button" class="compact-row duty-edit" data-week="' + escapeHtml(duty.week_start) + '"><span><strong>' + escapeHtml(formatDate(duty.week_start)) + '</strong><small>Prefect: ' + escapeHtml(duty.prefect_on_duty) + ' · Senior: ' + escapeHtml(duty.senior_prefect_on_duty) + '</small></span><span class="button quiet">Edit</span></button>';
     }).join("") : "No duty weeks entered yet.";
+  }
+
+  function dutyWeek(weekStart) {
+    return (state.duties.weeks || []).find(function (item) { return item.week_start === weekStart; }) || {};
+  }
+
+  function dutyPersonById(studentId) {
+    return lookupPool("student").find(function (person) { return String(person.id || person.student_id) === String(studentId || ""); }) || null;
+  }
+
+  function renderDutyPeople(type) {
+    var key = type + "_people";
+    var rows = state.serviceDutyDraft[key] || [];
+    var target = el("service-duty-" + type + "-list");
+    target.classList.toggle("empty-state", !rows.length);
+    target.innerHTML = rows.length ? rows.map(function (person) {
+      return '<div class="duty-person-row" data-student="' + escapeHtml(person.student_id) + '"><span><strong>' + escapeHtml(person.full_name) + '</strong><small>' + (person.assignment_source === "kitchen_rotation" ? "Copied from last week’s kitchen duty" : "Selected exact student record") + '</small></span><button class="button quiet remove-duty-person" data-duty-type="' + type + '" type="button">Remove</button></div>';
+    }).join("") : "No students added.";
+  }
+
+  function populateServiceDutyForm(weekStart) {
+    var normalized = mondayFor(weekStart || today());
+    var week = dutyWeek(normalized);
+    el("service-duty-week").value = normalized;
+    el("service-duty-bell").value = week.bell_ringer || "";
+    el("service-duty-kitchen-department").value = week.kitchen_department_id || "";
+    el("service-duty-toilet-department").value = week.toilet_department_id || "";
+    state.serviceDutyDraft = {
+      week_start: normalized,
+      kitchen_people: (week.kitchen_people || []).map(function (person) { return Object.assign({}, person); }),
+      toilet_people: (week.toilet_people || []).map(function (person) { return Object.assign({}, person); })
+    };
+    renderDutyPeople("kitchen");
+    renderDutyPeople("toilet");
+    var rotated = state.serviceDutyDraft.toilet_people.filter(function (person) { return person.assignment_source === "kitchen_rotation"; }).length;
+    el("service-duty-rotation-note").textContent = rotated
+      ? rotated + " student" + (rotated === 1 ? " was" : "s were") + " copied automatically from the previous week’s kitchen duty."
+      : "Kitchen duty from the previous week will appear here automatically.";
+  }
+
+  function renderServiceDutyWeeks() {
+    var weeks = (state.duties.weeks || []).filter(function (week) {
+      return week.bell_ringer || (week.kitchen_people || []).length || (week.toilet_people || []).length;
+    });
+    el("service-duty-weeks").classList.toggle("empty-state", !weeks.length);
+    el("service-duty-weeks").innerHTML = weeks.length ? weeks.map(function (week) {
+      var kitchen = (week.kitchen_people || []).map(function (person) { return person.full_name; }).join(", ") || "Not entered";
+      var toilet = (week.toilet_people || []).map(function (person) { return person.full_name; }).join(", ") || "Not entered";
+      return '<button type="button" class="compact-row service-duty-edit" data-week="' + escapeHtml(week.week_start) + '"><span><strong>' + escapeHtml(formatDate(week.week_start)) + ' to ' + escapeHtml(formatDate(addDays(week.week_start, 6))) + '</strong><small class="duty-week-detail">Bell: ' + escapeHtml(week.bell_ringer || "Not entered") + '<br>Kitchen: ' + escapeHtml(kitchen) + '<br>Toilet: ' + escapeHtml(toilet) + '</small></span><span class="button quiet">Edit</span></button>';
+    }).join("") : "No bell, kitchen or toilet duty weeks entered yet.";
+  }
+
+  function gateRowsForDate(dutyDate) {
+    return (state.duties.gate_assignments || []).filter(function (row) { return row.duty_date === dutyDate; });
+  }
+
+  function gateStudentName(rows, slotCode) {
+    var row = rows.find(function (item) { return item.slot_code === slotCode; });
+    return row ? row.student_name : "";
+  }
+
+  function populateGateDutyForm(dutyDate) {
+    var selectedDate = dutyDate || today();
+    var rows = gateRowsForDate(selectedDate);
+    el("gate-duty-date").value = selectedDate;
+    el("gate-duty-2200").value = gateStudentName(rows, "22_00");
+    el("gate-duty-0000").value = gateStudentName(rows, "00_02");
+    el("gate-duty-0200").value = gateStudentName(rows, "02_04");
+  }
+
+  function renderGateDutyDays() {
+    var dates = [];
+    (state.duties.gate_assignments || []).forEach(function (row) {
+      if (dates.indexOf(row.duty_date) < 0) dates.push(row.duty_date);
+    });
+    dates.sort();
+    el("gate-duty-days").classList.toggle("empty-state", !dates.length);
+    el("gate-duty-days").innerHTML = dates.length ? dates.map(function (date) {
+      var rows = gateRowsForDate(date);
+      return '<button type="button" class="compact-row gate-duty-edit" data-date="' + escapeHtml(date) + '"><span><strong>' + escapeHtml(formatDate(date)) + '</strong><small class="gate-slot-stack"><span>10 pm: ' + escapeHtml(gateStudentName(rows, "22_00") || "Not entered") + '</span><span>12 am: ' + escapeHtml(gateStudentName(rows, "00_02") || "Not entered") + '</span><span>2 am: ' + escapeHtml(gateStudentName(rows, "02_04") || "Not entered") + '</span></small></span><span class="button quiet">Edit</span></button>';
+    }).join("") : "No gate-duty days entered yet.";
+  }
+
+  function renderDutiesWorkspace() {
+    if (!hasDutiesWorkspace()) return;
+    var departments = (state.data.departments || []).filter(function (department) { return department.active && department.workspace_enabled; });
+    fillSelect(el("service-duty-kitchen-department"), departments, { first: "Choose department" });
+    fillSelect(el("service-duty-toilet-department"), departments, { first: "Choose department" });
+    if (isLeadership()) {
+      populateServiceDutyForm(state.serviceDutyDraft.week_start || state.duties.current_week || mondayFor(today()));
+      renderServiceDutyWeeks();
+    }
+    var actorScope = isLeadership() ? "leadership" : "department-member";
+    el("gate-duty-actor").dataset.lookup = actorScope;
+    el("gate-duty-actor").setAttribute("list", isLeadership() ? "leadership-name-options" : "department-member-options");
+    if (isLeadership() || isSecurityWorkspace()) {
+      populateGateDutyForm(value("gate-duty-date") || today());
+      renderGateDutyDays();
+    }
   }
 
   function renderReportsAttention() {
@@ -1623,6 +1735,7 @@
     renderNotifications();
     renderAttention();
     renderDutyRoster();
+    renderDutiesWorkspace();
     renderReportsAttention();
     renderTasks();
     renderDepartmentMemberSummary();
@@ -2048,6 +2161,88 @@
       var button = event.target.closest(".duty-edit"); if (button) populateDutyForm(button.dataset.week);
     });
 
+    function addServiceDutyPerson(type) {
+      try {
+        var input = el("service-duty-" + type + "-input");
+        var person = requireLookup(input, "student");
+        var key = type + "_people";
+        var studentId = person.id || person.student_id;
+        if (state.serviceDutyDraft[key].some(function (item) { return String(item.student_id) === String(studentId); })) {
+          throw new Error(person.full_name + " is already listed for " + type + " duty.");
+        }
+        state.serviceDutyDraft[key].push({ student_id: studentId, full_name: person.full_name, assignment_source: "manual" });
+        input.value = "";
+        renderDutyPeople(type);
+      } catch (error) { toast(error.message, true); }
+    }
+
+    el("service-duty-kitchen-add").addEventListener("click", function () { addServiceDutyPerson("kitchen"); });
+    el("service-duty-toilet-add").addEventListener("click", function () { addServiceDutyPerson("toilet"); });
+    el("service-duty-week").addEventListener("change", function () { populateServiceDutyForm(this.value); });
+    el("service-duty-kitchen-list").addEventListener("click", removeServiceDutyPerson);
+    el("service-duty-toilet-list").addEventListener("click", removeServiceDutyPerson);
+    function removeServiceDutyPerson(event) {
+      var button = event.target.closest(".remove-duty-person"); if (!button) return;
+      var row = button.closest(".duty-person-row"), type = button.dataset.dutyType, key = type + "_people";
+      state.serviceDutyDraft[key] = state.serviceDutyDraft[key].filter(function (person) { return String(person.student_id) !== String(row.dataset.student); });
+      renderDutyPeople(type);
+    }
+    el("service-duty-weeks").addEventListener("click", function (event) {
+      var button = event.target.closest(".service-duty-edit");
+      if (button) { populateServiceDutyForm(button.dataset.week); el("service-duty-panel").scrollIntoView({ behavior: "smooth", block: "start" }); }
+    });
+    el("service-duty-form").addEventListener("submit", async function (event) {
+      event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
+      try {
+        if (value("service-duty-kitchen-input") || value("service-duty-toilet-input")) throw new Error("Click Add student so every selected name appears in the duty list before saving.");
+        if (!state.serviceDutyDraft.kitchen_people.length) throw new Error("Add at least one student to kitchen duty.");
+        if (!state.serviceDutyDraft.toilet_people.length) throw new Error("Add at least one student to toilet duty.");
+        var bell = requireLookup("service-duty-bell", "student");
+        var actor = requireLookup("service-duty-actor", "leadership");
+        var result = await rpc("ops_save_service_duties", {
+          p_session_token: state.session.session_token,
+          p_week_start: value("service-duty-week"),
+          p_bell_student_id: bell.id || bell.student_id,
+          p_kitchen_department_id: value("service-duty-kitchen-department"),
+          p_toilet_department_id: value("service-duty-toilet-department"),
+          p_kitchen_students: state.serviceDutyDraft.kitchen_people.map(function (person) { return person.student_id; }),
+          p_toilet_students: state.serviceDutyDraft.toilet_people.map(function (person) { return person.student_id; }),
+          p_actor_student_id: actor.student_id || actor.id
+        });
+        if (result.status !== "success") throw new Error(result.message || "The weekly duties were not saved.");
+        state.serviceDutyDraft.week_start = value("service-duty-week");
+        await loadData(false); toast("Bell, kitchen and toilet duties saved. Next week’s toilet names were updated automatically.");
+      } catch (error) { toast(error.message, true); }
+      finally { setBusy(event.currentTarget, false); }
+    });
+
+    el("gate-duty-date").addEventListener("change", function () { populateGateDutyForm(this.value); });
+    el("gate-duty-days").addEventListener("click", function (event) {
+      var button = event.target.closest(".gate-duty-edit");
+      if (button) { populateGateDutyForm(button.dataset.date); el("gate-duty-panel").scrollIntoView({ behavior: "smooth", block: "start" }); }
+    });
+    el("gate-duty-form").addEventListener("submit", async function (event) {
+      event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
+      try {
+        var actorScope = isLeadership() ? "leadership" : "department-member";
+        var assignments = [
+          ["22_00", requireLookup("gate-duty-2200", "student")],
+          ["00_02", requireLookup("gate-duty-0000", "student")],
+          ["02_04", requireLookup("gate-duty-0200", "student")]
+        ].map(function (entry) { return { slot_code: entry[0], student_id: entry[1].id || entry[1].student_id }; });
+        var actor = requireLookup("gate-duty-actor", actorScope);
+        var result = await rpc("ops_save_gate_duty", {
+          p_session_token: state.session.session_token,
+          p_duty_date: value("gate-duty-date"),
+          p_assignments: assignments,
+          p_actor_student_id: actor.student_id || actor.id
+        });
+        if (result.status !== "success") throw new Error(result.message || "Gate duty was not saved.");
+        await loadData(false); toast("Gate duty saved for all three slots.");
+      } catch (error) { toast(error.message, true); }
+      finally { setBusy(event.currentTarget, false); }
+    });
+
     el("standing-department").addEventListener("change", function () { if (this.value) populateStandingForm(this.value); });
     el("standing-department-list").addEventListener("click", function (event) {
       var button = event.target.closest(".standing-edit"); if (button) populateStandingForm(button.dataset.department);
@@ -2334,6 +2529,12 @@
     el("duty-week-start").value = mondayFor(today());
     el("duty-week-start").min = addDays(mondayFor(today()), -14);
     el("duty-week-start").max = addDays(mondayFor(today()), 1825);
+    el("service-duty-week").value = mondayFor(today());
+    el("service-duty-week").min = addDays(mondayFor(today()), -14);
+    el("service-duty-week").max = addDays(mondayFor(today()), 730);
+    el("gate-duty-date").value = today();
+    el("gate-duty-date").min = addDays(today(), -14);
+    el("gate-duty-date").max = addDays(today(), 365);
     el("daily-date").value = today();
     el("transfer-date").value = today();
     el("period-start").value = mondayFor(today());

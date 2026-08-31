@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css?v=9">
+  <link rel="stylesheet" href="operations.css?v=10">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -70,6 +70,7 @@
       <button type="button" data-view="meal-service" data-roles="department" data-department-slug="kitchen">Meal service</button>
       <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="duties" data-roles="department,student_leadership,management,administrator" data-department-slug="security">Duties</button>
       <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
       <button type="button" data-view="members" data-roles="department,student_leadership,management,administrator">Department members</button>
       <button type="button" data-view="daily-report" data-roles="department,management">Daily report</button>
@@ -157,11 +158,11 @@
       </div>
       <div id="summary-cards" class="summary-grid"></div>
       <div class="overview-grid">
-        <article id="overview-duty-panel" class="panel clickable-panel" data-roles="student_leadership,management,administrator" data-open-view="tasks" data-open-task-section="duty">
-          <div class="panel-heading"><h3>Leadership on duty this week</h3><button class="button quiet" type="button" data-open-view="tasks" data-open-task-section="duty">Update</button></div>
+        <article id="overview-duty-panel" class="panel clickable-panel" data-roles="student_leadership,management,administrator" data-open-view="duties">
+          <div class="panel-heading"><h3>Leadership on duty this week</h3><button class="button quiet" type="button" data-open-view="duties">Update</button></div>
           <div class="duty-now-grid">
-            <button class="duty-now-card" type="button" data-open-view="tasks" data-open-task-section="duty"><span>Prefect on Duty</span><strong id="overview-prefect-duty">Not entered</strong></button>
-            <button class="duty-now-card" type="button" data-open-view="tasks" data-open-task-section="duty"><span>Senior Prefect on Duty</span><strong id="overview-senior-duty">Not entered</strong></button>
+            <button class="duty-now-card" type="button" data-open-view="duties"><span>Prefect on Duty</span><strong id="overview-prefect-duty">Not entered</strong></button>
+            <button class="duty-now-card" type="button" data-open-view="duties"><span>Senior Prefect on Duty</span><strong id="overview-senior-duty">Not entered</strong></button>
           </div>
         </article>
         <article id="overview-session-panel" class="panel" data-roles="department,management">
@@ -187,6 +188,72 @@
       </article>
     </section>
 
+    <section id="view-duties" class="view" aria-labelledby="duties-heading">
+      <div class="view-heading">
+        <div><p class="eyebrow">Monday to Sunday</p><h2 id="duties-heading">Duty rosters</h2><p class="muted">Set weekly campus duties and the three overnight gate slots from exact student records.</p></div>
+        <span class="status-pill green">Weeks end Sunday</span>
+      </div>
+
+      <details id="duty-roster-panel" class="panel task-setup-panel" data-roles="student_leadership,management,administrator" open>
+        <summary><span><strong>Prefect on Duty and Senior POD</strong><small>Enter this week or any future Monday-to-Sunday week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
+        <form id="duty-roster-form" class="form-grid details-body">
+          <label>Week beginning Monday<input id="duty-week-start" type="date" required></label>
+          <label>Prefect on Duty<input id="duty-prefect" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="senior-prefect-options" data-lookup="senior" required placeholder="Choose one of four Senior Prefects"></label>
+          <label>Note<input id="duty-notes" placeholder="Optional"></label>
+          <label>Entered by<input id="duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <div class="form-actions"><button class="button primary" type="submit">Save POD week</button></div>
+        </form>
+        <div id="duty-roster-list" class="compact-list details-body"></div>
+      </details>
+
+      <article id="service-duty-panel" class="panel" data-roles="student_leadership">
+        <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen names are copied automatically onto toilet duty for the following week. You can then review and adjust the next week before saving it.</p></div></div>
+        <form id="service-duty-form" class="form-grid">
+          <label>Week beginning Monday<input id="service-duty-week" type="date" required></label>
+          <label>Bell ringer<input id="service-duty-bell" list="student-name-options" data-lookup="student" required placeholder="Search and select the exact student"></label>
+
+          <fieldset class="duty-assignment-fieldset span-2">
+            <legend>Kitchen duty</legend>
+            <label>Responsible department<select id="service-duty-kitchen-department" required><option value="">Choose department</option></select></label>
+            <div class="duty-person-add">
+              <label>Add student<input id="service-duty-kitchen-input" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
+              <button id="service-duty-kitchen-add" class="button secondary" type="button">Add student</button>
+            </div>
+            <div id="service-duty-kitchen-list" class="duty-person-list empty-state">No students added.</div>
+          </fieldset>
+
+          <fieldset class="duty-assignment-fieldset span-2">
+            <legend>Toilet duty</legend>
+            <label>Responsible department<select id="service-duty-toilet-department" required><option value="">Choose department</option></select></label>
+            <div class="duty-person-add">
+              <label>Add student<input id="service-duty-toilet-input" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
+              <button id="service-duty-toilet-add" class="button secondary" type="button">Add student</button>
+            </div>
+            <div id="service-duty-toilet-list" class="duty-person-list empty-state">No students added.</div>
+            <p id="service-duty-rotation-note" class="field-help">Kitchen duty from the previous week will appear here automatically.</p>
+          </fieldset>
+
+          <label>Entered by<input id="service-duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <div class="form-actions"><button class="button primary" type="submit">Save weekly duties</button></div>
+        </form>
+        <div id="service-duty-weeks" class="compact-list duty-history-list"></div>
+      </article>
+
+      <article id="gate-duty-panel" class="panel" data-roles="department,student_leadership" data-department-slug="security">
+        <div class="panel-heading"><div><p class="eyebrow">Student Leadership and Security only</p><h3>Gate duty</h3><p>Choose one exact student for each slot. The duty date starts at 10:00 pm; the midnight and 2:00 am slots continue into the following morning.</p></div></div>
+        <form id="gate-duty-form" class="form-grid">
+          <label>Duty date<input id="gate-duty-date" type="date" required></label>
+          <label>10:00 pm to 12:00 am<input id="gate-duty-2200" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
+          <label>12:00 am to 2:00 am<input id="gate-duty-0000" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
+          <label>2:00 am to 4:00 am<input id="gate-duty-0200" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
+          <label>Entered by<input id="gate-duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search your exact record"></label>
+          <div class="form-actions"><button class="button primary" type="submit">Save gate duty</button></div>
+        </form>
+        <div id="gate-duty-days" class="compact-list duty-history-list"></div>
+      </article>
+    </section>
+
     <section id="view-tasks" class="view" aria-labelledby="tasks-heading">
       <div class="view-heading">
         <div><p class="eyebrow">One place for work</p><h2 id="tasks-heading">Tasks and allocation</h2><p id="tasks-description" class="muted">Submit, plan and track work without choosing individual students.</p></div>
@@ -207,19 +274,6 @@
         <label>Submitted by<input id="work-actor" list="department-member-options" data-lookup="department-member" required placeholder="Start typing your exact name"></label>
         <div class="form-actions"><button class="button primary" type="submit">Submit task</button></div>
       </form>
-
-      <details id="duty-roster-panel" class="panel task-setup-panel" data-roles="student_leadership,management,administrator">
-        <summary><span><strong>Weekly leadership on duty</strong><small>Enter this week or any future week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
-        <form id="duty-roster-form" class="form-grid details-body">
-          <label>Week beginning Monday<input id="duty-week-start" type="date" required></label>
-          <label>Prefect on Duty<input id="duty-prefect" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
-          <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="senior-prefect-options" data-lookup="senior" required placeholder="Choose one of four Senior Prefects"></label>
-          <label>Note<input id="duty-notes" placeholder="Optional"></label>
-          <label>Entered by<input id="duty-actor" list="leadership-name-options" data-lookup="leadership" required></label>
-          <div class="form-actions"><button class="button primary" type="submit">Save week</button></div>
-        </form>
-        <div id="duty-roster-list" class="compact-list details-body"></div>
-      </details>
 
       <section id="leadership-planning" data-roles="student_leadership,management">
         <div class="planning-toolbar panel">
@@ -669,6 +723,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=9"></script>
+  <script src="operations.js?v=10"></script>
 </body>
 </html>

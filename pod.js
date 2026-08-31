@@ -4,6 +4,7 @@
   function el(id){return document.getElementById(id);}
   function esc(value){return String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
   function dateLabel(iso){var date=new Date(iso+"T12:00:00");return date.toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"});}
+  function dutyNames(items){return Array.isArray(items)&&items.length?items.join(", "):"Not entered";}
   function taskCard(session,task){
     var groups=(session.groups||[]).filter(function(group){return Number(group.headcount||0)>0;});
     var members=session.department_members||[];
@@ -12,8 +13,14 @@
   function render(data){
     el("board-date").textContent=dateLabel(data.work_date);
     el("mode-pill").textContent=(data.base_mode==="holiday"?"Holiday Mode":"School Term Mode")+(data.conference_mode?" + Conference":"");
-    el("pod-name").textContent=(data.duty||{}).prefect_on_duty||"Not entered";
-    el("senior-pod-name").textContent=(data.duty||{}).senior_prefect_on_duty||"Not entered";
+    var duty=data.duty||{};
+    el("pod-name").textContent=duty.prefect_on_duty||"Not entered";
+    el("senior-pod-name").textContent=duty.senior_prefect_on_duty||"Not entered";
+    el("bell-ringer-name").textContent=duty.bell_ringer||"Not entered";
+    el("kitchen-duty-names").textContent=dutyNames(duty.kitchen_people);
+    el("kitchen-duty-department").textContent=duty.kitchen_department||"Department not entered";
+    el("toilet-duty-names").textContent=dutyNames(duty.toilet_people);
+    el("toilet-duty-department").textContent=duty.toilet_department||"Department not entered";
     var sessions=data.sessions||[],taskTotal=sessions.reduce(function(sum,session){return sum+(session.tasks||[]).length;},0);
     el("task-count").textContent=taskTotal+" task"+(taskTotal===1?"":"s");
     var order=[],bySlot={};

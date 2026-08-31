@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123d2b">
   <title>AMFCC Live POD Task Board</title>
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="pod.css?v=1">
+  <link rel="stylesheet" href="pod.css?v=2">
 </head>
 <body>
   <header class="pod-header">
@@ -18,6 +18,9 @@
     <section class="duty-grid" aria-label="Leadership on duty">
       <article><span>Prefect on Duty</span><strong id="pod-name">Not entered</strong></article>
       <article><span>Senior Prefect on Duty</span><strong id="senior-pod-name">Not entered</strong></article>
+      <article><span>Bell ringer</span><strong id="bell-ringer-name">Not entered</strong></article>
+      <article><span>Kitchen duty</span><strong id="kitchen-duty-names">Not entered</strong><small id="kitchen-duty-department">Department not entered</small></article>
+      <article><span>Toilet duty</span><strong id="toilet-duty-names">Not entered</strong><small id="toilet-duty-department">Department not entered</small></article>
     </section>
 
     <section class="board-heading"><div><p class="eyebrow">Approved work</p><h2>Today's task plan</h2><p>Department members are named. Other manpower is shown only as group totals.</p></div><span id="task-count" class="count">0 tasks</span></section>
@@ -28,6 +31,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="pod.js?v=1"></script>
+  <script src="pod.js?v=2"></script>
 </body>
 </html>
