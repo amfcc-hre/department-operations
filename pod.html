@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123d2b">
   <title>AMFCC Live POD Task Board</title>
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="pod.css?v=2">
+  <link rel="stylesheet" href="pod.css?v=3">
 </head>
 <body>
   <header class="pod-header">
@@ -23,6 +23,11 @@
       <article><span>Toilet duty</span><strong id="toilet-duty-names">Not entered</strong><small id="toilet-duty-department">Department not entered</small></article>
     </section>
 
+    <section class="gate-duty-board" aria-labelledby="gate-duty-heading">
+      <div><p class="eyebrow">Tonight and early tomorrow</p><h2 id="gate-duty-heading">Gate duty</h2></div>
+      <div id="gate-duty-slots" class="gate-duty-slots"><div class="empty">Loading gate duty…</div></div>
+    </section>
+
     <section class="board-heading"><div><p class="eyebrow">Approved work</p><h2>Today's task plan</h2><p>Department members are named. Other manpower is shown only as group totals.</p></div><span id="task-count" class="count">0 tasks</span></section>
     <div id="session-board" class="session-board" aria-live="polite"><div class="empty">Loading the live plan…</div></div>
   </main>
@@ -31,6 +36,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="pod.js?v=2"></script>
+  <script src="pod.js?v=3"></script>
 </body>
 </html>

@@ -16,6 +16,9 @@
     plannerTimer: null,
     draggedSessionId: null,
     personLookupResolve: null,
+    studentSearchTimers: {},
+    studentSearchSequences: {},
+    studentSearchCounter: 0,
     mode: { mode: "normal", conference_mode: false, holiday_mode: false },
     tools: null,
     studentServices: null,
@@ -160,7 +163,9 @@
     return isDepartment() ? currentDepartmentId() : value("members-department");
   }
   function departmentMembers(departmentId) {
-    return (state.planning.department_members || peopleDirectory().department_members || []).filter(function (person) {
+    var directoryMembers = peopleDirectory().department_members || [];
+    var source = directoryMembers.length ? directoryMembers : (state.planning.department_members || []);
+    return source.filter(function (person) {
       return person.department_id === departmentId;
     });
   }
@@ -168,21 +173,62 @@
     var people = peopleDirectory();
     if (scope === "staff") return people.staff || [];
     if (scope === "student") return people.students || state.planning.student_lookup || [];
-    if (scope === "leadership") return state.planning.leadership_people || people.leadership || [];
-    if (scope === "senior") return (state.planning.leadership_people || people.leadership || []).filter(function (person) { return person.is_senior_prefect; });
+    if (scope === "second-year") return (people.students || state.planning.student_lookup || []).filter(function (person) {
+      return serviceYearNumber(person.registration_number) === 2;
+    });
+    if (scope === "leadership") return (people.leadership || []).length ? people.leadership : (state.planning.leadership_people || []);
+    if (scope === "senior") return ((people.leadership || []).length ? people.leadership : (state.planning.leadership_people || [])).filter(function (person) { return person.is_senior_prefect; });
     if (scope === "department-member") return departmentMembers(currentDepartmentId());
     if (scope === "department-hod") return departmentMembers(selectedMembersDepartmentId()).filter(function (person) { return person.member_role === "hod"; });
     return [];
   }
-  function exactLookup(scope, name) {
-    var target = String(name || "").trim().toLowerCase();
-    return lookupPool(scope).find(function (person) { return String(person.full_name || "").trim().toLowerCase() === target; }) || null;
+  function lookupPersonId(person) { return String(person && (person.student_id || person.id) || ""); }
+  function lookupPersonName(person) { return String(person && (person.full_name || person.student_name) || "").trim(); }
+  function lookupRegistration(person) { return String(person && person.registration_number || "").trim(); }
+  function lookupDisplayLabel(person) {
+    var name = lookupPersonName(person), registration = lookupRegistration(person);
+    return registration ? name + " · " + registration : name;
+  }
+  function setLookupSelection(input, person) {
+    if (!input || !person) return;
+    input.value = lookupDisplayLabel(person);
+    input.dataset.selectedStudentId = lookupPersonId(person);
+    input.dataset.selectedRegistration = lookupRegistration(person);
+    input.dataset.selectedName = lookupPersonName(person);
+    input.dataset.selectedDisplayValue = input.value;
+  }
+  function clearLookupSelection(input) {
+    delete input.dataset.selectedStudentId;
+    delete input.dataset.selectedRegistration;
+    delete input.dataset.selectedName;
+    delete input.dataset.selectedDisplayValue;
+  }
+  function exactLookup(scope, name, input) {
+    var raw = String(name || "").trim();
+    var target = raw.split("·")[0].trim().toLowerCase();
+    var displayedRegistration = raw.indexOf("·") >= 0 ? raw.split("·").pop().trim() : "";
+    var pool = lookupPool(scope);
+    if (input && input.dataset.selectedDisplayValue === raw) {
+      var selectedId = input.dataset.selectedStudentId;
+      var selectedRegistration = input.dataset.selectedRegistration;
+      var selected = pool.find(function (person) {
+        return (selectedId && lookupPersonId(person) === selectedId)
+          || (selectedRegistration && lookupRegistration(person) === selectedRegistration);
+      });
+      if (selected) return selected;
+    }
+    if (displayedRegistration) {
+      var byRegistration = pool.find(function (person) { return lookupRegistration(person) === displayedRegistration; });
+      if (byRegistration) return byRegistration;
+    }
+    return pool.find(function (person) { return lookupPersonName(person).toLowerCase() === target; }) || null;
   }
   function requireLookup(inputOrId, scope) {
     var input = typeof inputOrId === "string" ? el(inputOrId) : inputOrId;
-    var person = exactLookup(scope || input.dataset.lookup, input.value);
+    var person = exactLookup(scope || input.dataset.lookup, input.value, input);
     if (!person) throw new Error("Choose an exact name from the lookup list.");
-    input.value = person.full_name;
+    if ((scope || input.dataset.lookup) !== "staff") setLookupSelection(input, person);
+    else input.value = person.full_name;
     return person;
   }
   function fillDatalist(id, items) {
@@ -203,14 +249,115 @@
     fillDatalist("senior-prefect-options", lookupPool("senior"));
     fillDatalist("department-member-options", lookupPool("department-member"));
     fillDatalist("department-hod-options", lookupPool("department-hod"));
+    all("[data-lookup]").forEach(ensureStudentLookup);
+  }
+  function isStudentLookupInput(input) {
+    return !!(input && input.matches && input.matches("[data-lookup]") && input.dataset.lookup !== "staff");
+  }
+  function ensureStudentLookup(input) {
+    if (!isStudentLookupInput(input)) return null;
+    input.removeAttribute("list");
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("aria-autocomplete", "list");
+    if (!input.dataset.studentSearchKey) {
+      state.studentSearchCounter += 1;
+      input.dataset.studentSearchKey = "student-lookup-" + state.studentSearchCounter;
+    }
+    var resultsId = input.getAttribute("aria-controls");
+    var results = resultsId ? el(resultsId) : null;
+    if (!results || !results.classList.contains("student-search-results")) {
+      results = document.createElement("div");
+      results.id = "student-search-results-" + state.studentSearchCounter;
+      results.className = "student-search-results";
+      results.hidden = true;
+      input.insertAdjacentElement("afterend", results);
+      input.setAttribute("aria-controls", results.id);
+    }
+    if (input.parentElement) input.parentElement.classList.add("student-search-field");
+    return results;
+  }
+  function studentSearchResults(input) {
+    var resultsId = input && input.getAttribute("aria-controls");
+    return resultsId ? el(resultsId) : null;
+  }
+  function hideStudentSearchResults(input) {
+    var results = studentSearchResults(input);
+    if (!results) return;
+    results.hidden = true;
+    results.innerHTML = "";
+  }
+  function hideAllStudentSearchResults() {
+    all(".student-search-results").forEach(function (results) {
+      results.hidden = true;
+      results.innerHTML = "";
+    });
+  }
+  function renderStudentSearchStatus(input, message) {
+    var results = ensureStudentLookup(input);
+    if (!results) return;
+    results.hidden = false;
+    results.innerHTML = '<div class="student-search-status">' + escapeHtml(message) + '</div>';
+  }
+  function allowedLookupMatch(scope, match) {
+    var registration = String(match.registration_number || "");
+    var name = String(match.student_name || "").trim().toLowerCase();
+    return lookupPool(scope).find(function (person) {
+      return (registration && lookupRegistration(person) === registration)
+        || lookupPersonName(person).toLowerCase() === name;
+    }) || null;
+  }
+  function renderStudentSearchResults(input, matches) {
+    var results = ensureStudentLookup(input);
+    if (!results) return;
+    var scope = input.dataset.lookup;
+    var allowed = (matches || []).map(function (match) { return allowedLookupMatch(scope, match); }).filter(function (person, index, rows) {
+      return person && rows.findIndex(function (item) { return lookupPersonId(item) === lookupPersonId(person); }) === index;
+    });
+    results.hidden = false;
+    if (!allowed.length) {
+      results.innerHTML = '<div class="student-search-status">No eligible active student matched that name or registration number.</div>';
+      return;
+    }
+    results.innerHTML = allowed.map(function (person) {
+      return '<button type="button" class="student-search-option" data-student-search-key="' + escapeHtml(input.dataset.studentSearchKey) + '" data-student-id="' + escapeHtml(lookupPersonId(person)) + '" data-registration-number="' + escapeHtml(lookupRegistration(person)) + '"><strong>' + escapeHtml(lookupPersonName(person)) + '</strong><span>Registration: ' + escapeHtml(lookupRegistration(person)) + '</span></button>';
+    }).join("");
+  }
+  async function searchStudentRecords(query) {
+    var cleanQuery = String(query || "").trim();
+    if (cleanQuery.length < 2) return { matches: [], message: "Enter at least two letters of the name or two digits of the registration number." };
+    var response = await state.client.rpc("gate_pass_student_search", { p_query: cleanQuery });
+    if (response.error) return { matches: [], message: response.error.message || "Student search is temporarily unavailable." };
+    if (!response.data || response.data.status !== "success") return { matches: [], message: response.data && response.data.message || "No matching students were found." };
+    return { matches: Array.isArray(response.data.matches) ? response.data.matches : [], message: "" };
+  }
+  function queueStudentSearch(input) {
+    var results = ensureStudentLookup(input);
+    if (!results || !state.client) return;
+    var key = input.dataset.studentSearchKey;
+    var query = String(input.value || "").trim();
+    clearTimeout(state.studentSearchTimers[key]);
+    state.studentSearchSequences[key] = Number(state.studentSearchSequences[key] || 0) + 1;
+    var sequence = state.studentSearchSequences[key];
+    if (query.length < 2) { hideStudentSearchResults(input); return; }
+    state.studentSearchTimers[key] = setTimeout(async function () {
+      renderStudentSearchStatus(input, "Searching…");
+      var result = await searchStudentRecords(query);
+      if (sequence !== state.studentSearchSequences[key]) return;
+      if (result.message && !result.matches.length) { renderStudentSearchStatus(input, result.message); return; }
+      renderStudentSearchResults(input, result.matches);
+    }, 250);
+  }
+  function studentLookupInputByKey(key) {
+    return all("[data-student-search-key]").find(function (input) { return input.dataset.studentSearchKey === key; }) || null;
   }
   function choosePerson(scope,title) {
     return new Promise(function (resolve,reject) {
       state.personLookupResolve={resolve:resolve,reject:reject,scope:scope};
       el("person-lookup-title").textContent=title||"Choose person";
       el("person-lookup-input").dataset.lookup=scope;
-      el("person-lookup-input").setAttribute("list",scope==="staff"?"staff-name-options":scope==="leadership"?"leadership-name-options":scope==="department-member"?"department-member-options":"student-name-options");
       el("person-lookup-input").value="";
+      clearLookupSelection(el("person-lookup-input"));
+      ensureStudentLookup(el("person-lookup-input"));
       el("person-lookup-modal").hidden=false;
       setTimeout(function(){el("person-lookup-input").focus();},50);
     });
@@ -697,7 +844,8 @@
     }
     var actorScope = isLeadership() ? "leadership" : "department-member";
     el("gate-duty-actor").dataset.lookup = actorScope;
-    el("gate-duty-actor").setAttribute("list", isLeadership() ? "leadership-name-options" : "department-member-options");
+    clearLookupSelection(el("gate-duty-actor"));
+    ensureStudentLookup(el("gate-duty-actor"));
     if (isLeadership() || isSecurityWorkspace()) {
       populateGateDutyForm(value("gate-duty-date") || today());
       renderGateDutyDays();
@@ -1928,9 +2076,41 @@
   }
 
   function bindEvents() {
+    document.addEventListener("focusin", function (event) {
+      var input = event.target.closest && event.target.closest("[data-lookup]");
+      if (input) ensureStudentLookup(input);
+    });
+    document.addEventListener("input", function (event) {
+      var input = event.target.closest && event.target.closest("[data-lookup]");
+      if (!isStudentLookupInput(input)) return;
+      clearLookupSelection(input);
+      queueStudentSearch(input);
+    });
+    document.addEventListener("click", function (event) {
+      var option = event.target.closest && event.target.closest(".student-search-option[data-student-search-key]");
+      if (option) {
+        var input = studentLookupInputByKey(option.dataset.studentSearchKey);
+        if (input) {
+          var scope = input.dataset.lookup;
+          var person = lookupPool(scope).find(function (candidate) {
+            return (option.dataset.studentId && lookupPersonId(candidate) === option.dataset.studentId)
+              || (option.dataset.registrationNumber && lookupRegistration(candidate) === option.dataset.registrationNumber);
+          });
+          if (person) {
+            setLookupSelection(input, person);
+            hideStudentSearchResults(input);
+            input.focus();
+          }
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (!event.target.closest || !event.target.closest(".student-search-field")) hideAllStudentSearchResults();
+    });
     document.addEventListener("submit", function (event) {
       var invalid = all("[data-lookup]", event.target).find(function (input) {
-        return String(input.value || "").trim() && !exactLookup(input.dataset.lookup,input.value);
+        return String(input.value || "").trim() && !exactLookup(input.dataset.lookup,input.value,input);
       });
       if (invalid) {
         event.preventDefault();
@@ -1942,8 +2122,9 @@
     document.addEventListener("change",function (event) {
       var input = event.target.closest && event.target.closest("[data-lookup]");
       if (!input || !String(input.value || "").trim()) return;
-      var person = exactLookup(input.dataset.lookup,input.value);
-      if (person) input.value = person.full_name;
+      var person = exactLookup(input.dataset.lookup,input.value,input);
+      if (person && input.dataset.lookup !== "staff") setLookupSelection(input, person);
+      else if (person) input.value = person.full_name;
     });
     el("access-type").addEventListener("change", function () {
       var department = value("access-type") === "department";
@@ -2143,7 +2324,7 @@
     el("duty-roster-form").addEventListener("submit", async function (event) {
       event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
       try {
-        var prefect = requireLookup("duty-prefect","leadership");
+        var prefect = requireLookup("duty-prefect","second-year");
         var senior = requireLookup("duty-senior-prefect","senior");
         var actor = requireLookup("duty-actor","leadership");
         var result = await rpc("ops_save_weekly_duty_v2", {
@@ -2172,6 +2353,8 @@
         }
         state.serviceDutyDraft[key].push({ student_id: studentId, full_name: person.full_name, assignment_source: "manual" });
         input.value = "";
+        clearLookupSelection(input);
+        hideStudentSearchResults(input);
         renderDutyPeople(type);
       } catch (error) { toast(error.message, true); }
     }

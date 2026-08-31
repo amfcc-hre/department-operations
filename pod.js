@@ -5,6 +5,18 @@
   function esc(value){return String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
   function dateLabel(iso){var date=new Date(iso+"T12:00:00");return date.toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"});}
   function dutyNames(items){return Array.isArray(items)&&items.length?items.join(", "):"Not entered";}
+  function renderGateDuty(duty,workDate){
+    var rows=(duty.gate_assignments||[]).filter(function(row){return row.duty_date===workDate;});
+    var slots=[
+      {code:"22_00",label:"10:00 pm to 12:00 am"},
+      {code:"00_02",label:"12:00 am to 2:00 am"},
+      {code:"02_04",label:"2:00 am to 4:00 am"}
+    ];
+    el("gate-duty-slots").innerHTML=slots.map(function(slot){
+      var row=rows.find(function(item){return item.slot_code===slot.code;});
+      return '<article><span>'+esc(slot.label)+'</span><strong>'+esc(row?row.student_name:"Not entered")+'</strong></article>';
+    }).join("");
+  }
   function taskCard(session,task){
     var groups=(session.groups||[]).filter(function(group){return Number(group.headcount||0)>0;});
     var members=session.department_members||[];
@@ -21,6 +33,7 @@
     el("kitchen-duty-department").textContent=duty.kitchen_department||"Department not entered";
     el("toilet-duty-names").textContent=dutyNames(duty.toilet_people);
     el("toilet-duty-department").textContent=duty.toilet_department||"Department not entered";
+    renderGateDuty(duty,data.work_date);
     var sessions=data.sessions||[],taskTotal=sessions.reduce(function(sum,session){return sum+(session.tasks||[]).length;},0);
     el("task-count").textContent=taskTotal+" task"+(taskTotal===1?"":"s");
     var order=[],bySlot={};

@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v10-duties';
+const CACHE='amfcc-department-operations-v11-exact-student-lookup';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',

@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css?v=10">
+  <link rel="stylesheet" href="operations.css?v=11">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -195,10 +195,10 @@
       </div>
 
       <details id="duty-roster-panel" class="panel task-setup-panel" data-roles="student_leadership,management,administrator" open>
-        <summary><span><strong>Prefect on Duty and Senior POD</strong><small>Enter this week or any future Monday-to-Sunday week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
+        <summary><span><strong>Prefect on Duty and Senior POD</strong><small>The POD may be any active second-year student. Enter this week or any future Monday-to-Sunday week.</small></span><span id="duty-current-summary" class="mini-summary">Not entered</span></summary>
         <form id="duty-roster-form" class="form-grid details-body">
           <label>Week beginning Monday<input id="duty-week-start" type="date" required></label>
-          <label>Prefect on Duty<input id="duty-prefect" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <label>Prefect on Duty<input id="duty-prefect" data-lookup="second-year" required placeholder="Search second-year students by name or registration"></label>
           <label>Senior Prefect on Duty<input id="duty-senior-prefect" list="senior-prefect-options" data-lookup="senior" required placeholder="Choose one of four Senior Prefects"></label>
           <label>Note<input id="duty-notes" placeholder="Optional"></label>
           <label>Entered by<input id="duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
@@ -723,6 +723,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=10"></script>
+  <script src="operations.js?v=11"></script>
 </body>
 </html>
