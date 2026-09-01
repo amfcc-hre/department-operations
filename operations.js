@@ -526,8 +526,27 @@
     banner.className = "operating-mode-banner " + (conference ? "conference" : state.mode.mode);
     el("operating-mode-title").textContent = state.mode.combined_label || state.mode.label || titleCase(state.mode.mode) + " Mode";
     el("operating-mode-message").textContent = conference
-      ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions and meal deadlines. Record every piece of work as an Emergency task."
+      ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions, disables meal collection and removes meal deadlines. Record every piece of work as an Emergency task."
       : "Morning and Afternoon task sessions are available during Holiday Mode.";
+    var kitchenForm = el("kitchen-checkin-form");
+    var kitchenNotice = el("kitchen-conference-notice");
+    var kitchenScannerLink = el("kitchen-scanner-link");
+    if (kitchenForm) {
+      all("input,select,button",kitchenForm).forEach(function (control) { control.disabled = conference; });
+    }
+    if (kitchenNotice) kitchenNotice.hidden = !conference;
+    if (kitchenScannerLink) kitchenScannerLink.hidden = conference;
+    if (conference && el("kitchen-scanner-state")) {
+      el("kitchen-scanner-state").className = "status-pill red";
+      el("kitchen-scanner-state").textContent = "Conference Mode";
+      el("kitchen-scan-result").className = "scan-result error";
+      el("kitchen-scan-result").innerHTML = "<strong>Meal collection disabled</strong><span>Conference Mode is on.</span>";
+    } else if (!conference && el("kitchen-scanner-state")) {
+      el("kitchen-scanner-state").className = "status-pill green";
+      el("kitchen-scanner-state").textContent = "Ready to scan";
+      el("kitchen-scan-result").className = "scan-result neutral";
+      el("kitchen-scan-result").textContent = "Waiting for the next student card.";
+    }
     if (conference) {
       if (el("work-priority")) {
         el("work-priority").value = "crucial";
@@ -1319,7 +1338,7 @@
 
   function focusKitchenScanner() {
     var field = el("kitchen-registration");
-    if (!field || !el("view-meal-service").classList.contains("active")) return;
+    if (!field || isConference() || !el("view-meal-service").classList.contains("active")) return;
     setTimeout(function () { if (el("view-meal-service").classList.contains("active")) field.focus(); }, 80);
   }
 
@@ -1358,6 +1377,10 @@
   }
 
   async function checkInKitchen(source, busyTarget) {
+    if (isConference()) {
+      renderKitchenResult({ status:"conference_disabled", message:"Meal collection is unavailable while Conference Mode is on." }, "");
+      return;
+    }
     var scanned = value("kitchen-registration");
     var registrationNumber = normalizeScannedRegistration(scanned);
     if (!registrationNumber) {
@@ -1385,11 +1408,13 @@
     var result = await rpc("ops_kitchen_service", { p_session_token: state.session.session_token, p_action: "dashboard", p_payload: { service_date: today() } });
     if (result.status !== "success") throw new Error(result.message || "Kitchen totals could not be loaded.");
     var meals = ["Breakfast","Lunch","Break-fast 4pm","Supper"];
-    el("kitchen-counts").innerHTML = meals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + '</div><div class="value">' + Number((result.counts || {})[meal] || 0) + '</div></article>'; }).join("") + '<article class="summary-card"><div class="label">Lunch to prepare</div><div class="value">' + Number(result.lunch_to_cook || 0) + '</div></article>';
+    el("kitchen-counts").innerHTML = meals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' portions</div><div class="value">' + Number((result.counts || {})[meal] || 0) + '</div></article>'; }).join("") + '<article class="summary-card"><div class="label">Lunch to prepare</div><div class="value">' + Number(result.lunch_to_cook || 0) + '</div></article>';
     var recent = result.recent || [];
     el("kitchen-recent").classList.toggle("empty-state", !recent.length);
     el("kitchen-recent").innerHTML = recent.length ? recent.map(function (checkin) {
-      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(checkin.full_name) + '</h3><p>' + escapeHtml(checkin.registration_number + " · " + checkin.meal_session) + '</p></div><span class="status-pill green">' + escapeHtml(formatDateTime(checkin.checked_in_at)) + '</span></div></article>';
+      var childText = Number(checkin.child_portions || 0) > 0 ? " · " + Number(checkin.child_portions) + " child portion" + (Number(checkin.child_portions) === 1 ? "" : "s") : "";
+      var roleText = checkin.recipient_role === "additional" ? " · Additional student" : "";
+      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(checkin.full_name) + '</h3><p>' + escapeHtml(checkin.registration_number + " · " + checkin.meal_session + roleText + childText) + '</p></div><span class="status-pill green">' + escapeHtml(formatDateTime(checkin.checked_in_at)) + '</span></div></article>';
     }).join("") : "No students checked in yet.";
   }
 

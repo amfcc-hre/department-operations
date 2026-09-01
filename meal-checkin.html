@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#123d2b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>AMFCC Kitchen Meal Check-In</title>
+  <title>AMFCC Kitchen Meal Collection</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="operations.css?v=5">
-  <link rel="stylesheet" href="meal-checkin.css?v=1">
+  <link rel="stylesheet" href="operations.css?v=6">
+  <link rel="stylesheet" href="meal-checkin.css?v=2">
 </head>
 <body class="kiosk-body">
   <main class="kiosk-shell">
     <header class="kiosk-header">
-      <div><p class="eyebrow">AMFCC Kitchen</p><h1>Meal check-in</h1><p id="kiosk-session" class="muted">Checking Kitchen access.</p></div>
+      <div><p class="eyebrow">AMFCC Kitchen</p><h1>Meal collection</h1><p id="kiosk-session" class="muted">Checking Kitchen access.</p></div>
       <a class="button quiet" href="index.html">Back to Operations</a>
     </header>
 
@@ -22,6 +22,13 @@
       <h2>Kitchen login required</h2>
       <p>This scanner is part of Department Operations. Open Operations, choose Kitchen and enter the Kitchen PIN first.</p>
       <a class="button primary" href="index.html">Open Kitchen login</a>
+    </section>
+
+    <section id="kiosk-conference" class="conference-closed" hidden>
+      <div class="closed-icon" aria-hidden="true">⛔</div>
+      <h2>Meal collection is disabled</h2>
+      <p>Conference Mode is on. Students and staff cannot create meal collections until it is turned off.</p>
+      <a class="button secondary" href="index.html">Back to Operations</a>
     </section>
 
     <section id="kiosk-workspace" hidden>
@@ -34,11 +41,11 @@
 
       <section class="scan-card">
         <div class="scanner-ready"><span id="scanner-light" aria-hidden="true"></span><strong id="scanner-state">Ready to scan</strong></div>
-        <p>Scan the student card with the connected 2D scanner. The scanner should send Enter after the card code.</p>
+        <p>Students should normally use Student Services. Use this scanner only when Kitchen staff need to assist.</p>
         <form id="scan-form" autocomplete="off">
           <label for="scan-input">Student card or registration number</label>
           <input id="scan-input" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Scan card or enter 5 digits" required autofocus>
-          <button id="scan-submit" class="button primary wide" type="submit">Check student in</button>
+          <button id="scan-submit" class="button primary wide" type="submit">Record collection</button>
         </form>
         <p class="manual-note">Manual entry is available if a card cannot be scanned.</p>
       </section>
@@ -49,7 +56,7 @@
       </section>
 
       <section class="kiosk-footer panel">
-        <div><strong id="today-total">0</strong><span>check-ins for the selected meal today</span></div>
+        <div><strong id="today-total">0</strong><span>portions recorded for the selected meal today</span></div>
         <button id="refresh-total" class="button secondary" type="button">Refresh count</button>
       </section>
     </section>
@@ -57,6 +64,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="meal-checkin.js?v=1"></script>
+  <script src="meal-checkin.js?v=2"></script>
 </body>
 </html>

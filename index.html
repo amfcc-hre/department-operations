@@ -86,30 +86,34 @@
       <div class="view-heading">
         <div>
           <p class="eyebrow">Kitchen daily service</p>
-          <h2 id="meal-service-heading">Meal check-in</h2>
-          <p class="muted">Scan student cards as students collect meals. Every check-in is stored directly in Department Operations.</p>
+          <h2 id="meal-service-heading">Meal service</h2>
+          <p class="muted">View student collection confirmations and use the protected scanner only when staff assistance is needed.</p>
         </div>
         <div class="card-actions">
           <button id="kitchen-refresh" class="button secondary" type="button">Refresh totals</button>
-          <a class="button primary" href="meal-checkin.html">Open full-screen scanner</a>
+          <a id="kitchen-scanner-link" class="button primary" href="meal-checkin.html">Open full-screen scanner</a>
         </div>
+      </div>
+      <div id="kitchen-conference-notice" class="operating-mode-banner conference" hidden>
+        <strong>Meal collection is disabled during Conference Mode.</strong>
+        <span>Students and staff cannot create meal collections until Conference Mode is turned off.</span>
       </div>
       <div id="kitchen-counts" class="summary-grid compact"></div>
       <div class="two-column meal-service-grid">
         <article class="panel scanner-panel">
           <div class="panel-heading">
-            <div><h3>Card scanner</h3><p>Choose the meal, keep the field ready, then scan. A connected 2D scanner can type the card code and send Enter automatically.</p></div>
+            <div><h3>Staff-assisted collection</h3><p>Students should normally use Student Services. Choose the meal and scan only when Kitchen staff need to assist.</p></div>
             <span id="kitchen-scanner-state" class="status-pill green">Ready to scan</span>
           </div>
           <form id="kitchen-checkin-form" class="form-stack" autocomplete="off">
             <label>Meal<select id="kitchen-meal"><option value="Breakfast">Breakfast</option><option value="Lunch">Lunch</option><option value="Break-fast 4pm">Break-fast 4pm</option><option value="Supper">Supper</option></select></label>
             <label>Student card or registration number<input id="kitchen-registration" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Scan card or enter 5 digits" required><span class="field-help">Manual entry remains available if a card cannot be scanned.</span></label>
-            <button id="kitchen-checkin-button" class="button primary wide" type="submit">Check student in</button>
+            <button id="kitchen-checkin-button" class="button primary wide" type="submit">Record collection</button>
           </form>
           <div id="kitchen-scan-result" class="scan-result neutral" role="status" aria-live="assertive">Waiting for the next student card.</div>
         </article>
         <article class="panel">
-          <div class="panel-heading"><div><h3>Latest check-ins</h3><p>Most recent meal collections for the selected day.</p></div><button id="kitchen-export" class="button secondary" type="button">Export today</button></div>
+          <div class="panel-heading"><div><h3>Latest collections</h3><p>Most recent meal portions for the selected day, including child portions.</p></div><button id="kitchen-export" class="button secondary" type="button">Export today</button></div>
           <div id="kitchen-recent" class="card-list empty-state">No students checked in yet.</div>
         </article>
       </div>
