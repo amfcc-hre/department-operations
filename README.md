@@ -12,24 +12,27 @@ Department Operations is the main staff work platform. It replaces the former St
 
 It connects departmental work, student allocations, task planning, daily reporting, weekly and monthly reporting, department-specific tools and student-operations administration in one system.
 
-Kitchen staff and Clinic staff work belongs here. Student self-service meal check-in and personal gate-pass requests remain in Student Services.
+Kitchen staff and Clinic staff work belongs here. Student self-service meal check-in, meal collection and personal gate-pass requests remain in Student Services.
 
 ## Access model
 
 | Workspace | Main permissions |
 | --- | --- |
-| Department | Simple task submission, own task list, daily and period reports, and department-specific operational tools |
+| Department | Simple task submission, own task list, daily and period reports, and department-specific operational tools. Conference Accommodation and Student Accommodation also receive the protected accommodation register. |
 | Student Leadership | One-page task approval and allocation, cohort availability, weekly duty rosters, standing-department setup, student-services operations and task exports |
 | Management | Operational oversight, senior gate-pass actions, reports, planning and management actions |
 | School Administration | Clickable overview, open task list, weekly duty rosters, student and pass summaries, report attention, student fee status, Administrator pass decisions, system settings and department PIN management |
 
 - Every department has one shared four-digit PIN.
 - Individual staff PINs are not required.
+- On first use, School Administration issues an eight-digit one-time setup code. The department enters that code once and chooses its own four-digit PIN.
+- A one-time setup code expires after 24 hours, is locked for 15 minutes after five incorrect attempts and cannot be reused.
+- School Administration can issue the same self-service flow when an established department needs to choose a replacement PIN.
 - Name fields are exact database lookups. Registration numbers are not requested outside Student Services.
 - The staff directory is available only in reporting fields. Staff never appear in task, allocation or department-member lists.
 - Departments cannot request named students.
 - HODs can maintain their own student-member roster. Student Leadership, Management and School Administration can maintain every department roster.
-- School Administration can replace department PINs from the Department access section.
+- School Administration can issue department setup codes or replace department PINs directly from the Department access section.
 - IT Administration can change every role and department PIN from the separate IT Administration site.
 
 ## Standard department workspace
@@ -96,6 +99,21 @@ Every workspace above has department-specific headings, planning language, stock
 
 Finance / Accounts is currently limited to its departmental operations and spending records. This platform does not replace the school's accounting system.
 
+## Accommodation Operations
+
+Conference Accommodation and Student Accommodation open directly to the protected student accommodation register after using their existing department PIN.
+
+- Each building is shown as a separate choice. Only one building and the names assigned to it are displayed at a time.
+- An Unassigned view lists active students who do not currently have an accommodation allocation.
+- Users can filter the selected building by student name, room, bed or allocation status.
+- A student must be chosen through the same exact searchable database-record lookup used by gate passes.
+- The department can assign or change the building, room, bed and accommodation status, or remove the current assignment.
+- Status options are Waiting, Allocated, Checked in and Checked out.
+- Every change records the session role, responsible department, before value, after value and time in the audit log.
+- Fees, medical information, sponsor details and private School Administration notes are not returned to the accommodation departments.
+
+The register uses the existing `students` and `accommodation_allocations` records. It does not create a second student list, a new login or a new role system.
+
 ### Horticulture structure
 
 Horticulture is the main department and uses one Horticulture PIN.
@@ -120,18 +138,21 @@ Prayer, Church Representative, Orchard, International Student Representatives, G
 
 Kitchen is a daily service, so its first page is Meal service rather than the general task page.
 
-- Scan student cards with a connected 2D scanner on an iPad or computer.
-- Enter a five-digit registration number manually when required.
-- View meal totals and recent check-ins.
+- View separate preparation check-in counts for Breakfast, Lunch and Break-fast 4pm.
+- View actual meal-portion collection totals, including anonymous child portions.
+- View recent student collections and any child portions attached to the collector.
+- Assist a student with a connected 2D scanner or five-digit registration number when required.
 - Open the dedicated full-screen scanner in `meal-checkin.html`.
 - Export meal-attendance records.
 - Plan daily or weekly meals.
 - Track ingredients, food received, food used, wastage and remaining stock.
 - Submit occasional tasks only when Kitchen needs work outside its normal daily service.
 
-The Kitchen staff scanner uses the protected Kitchen Operations session and does not depend on the Student Services repository.
+The Kitchen staff scanner uses the protected Kitchen Operations session and does not depend on the Student Services repository. It records collection, not the earlier planning check-in. Conference Mode disables both the scanner and all collection inserts.
 
-Students still use the separate Student Meal Check-In page in Student Services.
+During School Term Mode, students first use Meal Check-In for Breakfast, Lunch or Break-fast 4pm. Supper has no advance check-in because Kitchen cooks for everyone. Students then use Meal Collection when they arrive: they select their exact record, can add one other student, enter child portions by number and show Kitchen the full-screen confirmation.
+
+Holiday Mode disables advance Meal Check-In but leaves Meal Collection available. Conference Mode disables both because everyone is cooked for automatically.
 
 ## Clinic Operations
 
@@ -218,6 +239,12 @@ School Administration also receives:
 - the Conference Mode overlay; and
 - student-services and meal-attendance exports.
 
+Pass emails are targeted to the person who must act:
+
+- School Administration receives new-pass emails and one unresolved-pending reminder 12 hours after the proposed departure time.
+- Student Leadership receives overdue-return alerts and Tanaka or Amalinda Shops alerts after 70 minutes without a later check-in.
+- Routine student status emails are not copied to School Administration or Student Leadership.
+
 Student Leadership cannot see fees or confidential Clinic notes.
 
 ## Operating modes
@@ -226,9 +253,9 @@ The platform always has one base mode. Conference Mode is an optional overlay.
 
 | Mode | Operational effect |
 | --- | --- |
-| School Term Mode | Standard deadlines, gate-pass rules and the regular manual-work timetable |
-| Holiday Mode | Morning and Afternoon task slots plus the holiday gate-pass rules |
-| Conference Mode overlay | No meal deadline, no manual-work sessions or group allocations, and all active work is treated as Emergency work |
+| School Term Mode | Meal Check-In is available for Breakfast, Lunch and Break-fast 4pm, alongside standard gate-pass and work rules |
+| Holiday Mode | Advance Meal Check-In is disabled; Meal Collection remains available; Morning and Afternoon task slots and holiday gate-pass rules apply |
+| Conference Mode overlay | Meal Check-In and Meal Collection are disabled, manual-work sessions and group allocations are removed, and all active work is treated as Emergency work |
 
 Conference Mode can be enabled alongside School Term Mode or Holiday Mode. It is not a third base mode. The selected base mode continues to control gate-pass rules.
 
@@ -247,6 +274,8 @@ Department reports and management actions can be placed in the Jira outbox for s
 - Never add a Supabase secret key or legacy `service_role` key to this repository.
 - Never store password-manager secrets, recovery codes, AssetTiger API keys or vault exports in this repository or in Department Operations records.
 - PINs are verified in the database and are not stored in browser files.
+- One-time setup codes and department PINs are stored as salted bcrypt hashes. The setup code is shown only when School Administration generates it.
+- Changing a department PIN through either approved method revokes that department's earlier Operations sessions.
 - A successful login receives a temporary Operations session token.
 - Protected database functions validate the session role and department before completing an action.
 - The raw PIN is not retained and is not sent again after login.
@@ -259,8 +288,8 @@ Department reports and management actions can be placed in the Jira outbox for s
 | `index.html` | All protected Operations workspaces |
 | `operations.js` | Login, role permissions, tasks, reports, tools and student-services behaviour |
 | `operations.css` | Operations layout and responsive styling |
-| `meal-checkin.html` | Full-screen protected Kitchen scanner |
-| `meal-checkin.js` | Kitchen card-scanning and check-in workflow |
+| `meal-checkin.html` | Full-screen protected Kitchen collection scanner |
+| `meal-checkin.js` | Kitchen card-scanning and collection workflow |
 | `meal-checkin.css` | Full-screen scanner styling |
 | `pod.html` | Public read-only live POD task board |
 | `pod.js` | Live duty and approved-task feed |
@@ -269,6 +298,10 @@ Department reports and management actions can be placed in the Jira outbox for s
 | `manifest.webmanifest` | Installable web-app details |
 | `shared_config.js` | Supabase project URL and publishable key |
 | `shared_ui.css` | Shared interface styling |
+| `supabase/migrations/202609010002_student_meal_check_in.sql` | Separate School Term check-in counts and mode enforcement |
+| `supabase/migrations/202609010003_targeted_pass_email_alerts.sql` | Targeted Admin and Student Leadership email rules |
+| `supabase/migrations/202609020002_department_first_login_pin_setup.sql` | Protected first-login codes and department-owned PIN setup |
+| `supabase/functions/pass-email-worker/` | Email rendering and delivery for pass and movement alerts |
 
 ## Deployment with GitHub Pages
 
@@ -281,26 +314,30 @@ Department reports and management actions can be placed in the Jira outbox for s
 7. Wait for GitHub Pages to publish the site.
 8. Open the live-site link above in a private browser window.
 
-The Supabase database migrations are already deployed. Do not run the SQL reference files again during a normal website update.
+Apply `supabase/migrations/202609020002_department_first_login_pin_setup.sql` once before uploading the matching website files. Do not run a migration again after it appears in the project's migration history.
 
 ## First-use checks
 
 1. Open `pod.html` without a PIN and confirm today's POD, Senior POD and approved work appear.
 2. Sign in as Student Leadership and confirm the four-digit PIN works.
 3. Sign in as School Administration and confirm fee status and settings are visible.
-4. Sign in to a normal department and submit a test work request without choosing a session.
-5. Sign in to Horticulture and confirm one PIN opens the workspace with Open Field and Greenhouses report choices.
-6. Sign in to Poultry and confirm one PIN opens the workspace with Layers and Broilers report choices.
-7. Sign in to Kitchen and confirm Meal service opens first.
-8. Scan a test student card and confirm the scanner becomes ready for the next card.
-9. Sign in to Clinic and confirm the Clinic register opens first.
-9. Confirm a next-day department request is accepted before 6:00 pm and becomes Unexpected work after the deadline.
-10. Confirm Holiday Mode and Conference Mode appear as separate settings.
-11. Confirm Student Leadership cannot see fee information or confidential Clinic notes.
-12. In each Student services list, test the gender, class and campus-status filters together.
-13. In Student Leadership, switch between daily and weekly planner views, then move a test task by drag and drop and by the Move button.
-14. Open Department members and confirm an HOD can edit only their own roster while Student Leadership, Management and School Administration can edit any roster.
-15. Sign in to IT Department, open AssetTiger and Bitwarden, and confirm both launch in separate tabs without leaving the Operations session.
+4. Open Department logins, generate a first-login code for a department without a PIN and record the displayed code privately.
+5. Sign out, choose that department, enter the one-time code, choose and confirm a new four-digit PIN, and confirm the workspace opens.
+6. Sign out again and confirm the new department PIN opens the workspace through the normal login form.
+7. Confirm the used setup code cannot be reused and no longer appears as active to School Administration.
+8. Submit a test work request without choosing a session.
+9. Sign in to Horticulture and confirm one PIN opens the workspace with Open Field and Greenhouses report choices.
+10. Sign in to Poultry and confirm one PIN opens the workspace with Layers and Broilers report choices.
+11. Sign in to Kitchen and confirm Meal service opens first.
+12. Scan a test student card and confirm the scanner becomes ready for the next card.
+13. Sign in to Clinic and confirm the Clinic register opens first.
+14. Confirm a next-day department request is accepted before 6:00 pm and becomes Unexpected work after the deadline.
+15. Confirm Holiday Mode and Conference Mode appear as separate settings.
+16. Confirm Student Leadership cannot see fee information or confidential Clinic notes.
+17. In each Student services list, test the gender, class and campus-status filters together.
+18. In Student Leadership, switch between daily and weekly planner views, then move a test task by drag and drop and by the Move button.
+19. Open Department members and confirm an HOD can edit only their own roster while Student Leadership, Management and School Administration can edit any roster.
+20. Sign in to IT Department, open AssetTiger and Bitwarden, and confirm both launch in separate tabs without leaving the Operations session.
 
 ## Related repositories
 

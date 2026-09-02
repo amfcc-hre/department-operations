@@ -5,6 +5,9 @@
     client: null,
     catalog: { departments: [] },
     session: null,
+    pinSetupMode: false,
+    pinSetupOverview: { setups: [] },
+    generatedPinSetupCodes: {},
     data: null,
     groups: { groups: [], allocations: [], holiday_mode: false },
     planning: { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] },
@@ -21,6 +24,9 @@
     studentSearchCounter: 0,
     mode: { mode: "normal", conference_mode: false, holiday_mode: false },
     tools: null,
+    accommodation: null,
+    accommodationBuilding: null,
+    accommodationEdit: null,
     studentServices: null,
     studentTermId: null,
     studentEdit: null,
@@ -154,6 +160,9 @@
   function isKitchenWorkspace() { return isDepartment() && currentDepartmentSlug() === "kitchen"; }
   function isClinicWorkspace() { return isDepartment() && currentDepartmentSlug() === "clinic"; }
   function isSecurityWorkspace() { return isDepartment() && currentDepartmentSlug() === "security"; }
+  function isAccommodationWorkspace() {
+    return isDepartment() && ["conference-centre", "student-accommodation"].indexOf(currentDepartmentSlug()) >= 0;
+  }
   function hasDutiesWorkspace() { return isLeadership() || isManagement() || isSecurityWorkspace(); }
   function peopleDirectory() {
     return state.data && state.data.people_directory && state.data.people_directory.status === "success"
@@ -369,6 +378,7 @@
   function workspaceDefaultView() {
     if (isKitchenWorkspace()) return "meal-service";
     if (isClinicWorkspace()) return "clinic-service";
+    if (isAccommodationWorkspace()) return "accommodation-service";
     if (isSecurityWorkspace()) return "duties";
     return isDepartment() ? "tools" : "overview";
   }
@@ -405,7 +415,7 @@
       throw response.error;
     }
     var data = response.data;
-    if (data && ["unauthorized", "locked"].indexOf(data.status) >= 0 && name !== "ops_login") {
+    if (data && ["unauthorized", "locked"].indexOf(data.status) >= 0 && name !== "ops_login" && state.session) {
       signOut(false);
       throw new Error(data.message || "Your session has ended.");
     }
@@ -433,10 +443,53 @@
     if (items.some(function (item) { return String(config.id ? item[config.id] : item.id) === previous; })) select.value = previous;
   }
 
+  function selectedLoginDepartment() {
+    var slug = value("login-department");
+    return (state.catalog.departments || []).find(function (department) { return department.slug === slug; }) || null;
+  }
+
+  function isDepartmentPinSetupMode() {
+    var department = selectedLoginDepartment();
+    return value("access-type") === "department" && !!department && (!department.login_enabled || state.pinSetupMode);
+  }
+
+  function updateDepartmentLoginForm() {
+    var departmentLogin = value("access-type") === "department";
+    var department = selectedLoginDepartment();
+    var setupMode = isDepartmentPinSetupMode();
+    var currentPinField = el("access-code-field");
+    var setupPanel = el("department-pin-setup");
+    var setupCode = el("department-setup-code");
+    var newPin = el("department-new-pin");
+    var confirmPin = el("department-confirm-pin");
+
+    el("department-login-field").hidden = !departmentLogin;
+    el("login-department").required = departmentLogin;
+    currentPinField.hidden = setupMode;
+    el("access-code").required = !setupMode;
+    setupPanel.hidden = !setupMode;
+    setupCode.required = setupMode;
+    newPin.required = setupMode;
+    confirmPin.required = setupMode;
+
+    el("use-department-setup").hidden = !(
+      departmentLogin && department && department.login_enabled && department.pin_setup_available && !setupMode
+    );
+    el("use-existing-pin").hidden = !(setupMode && department && department.login_enabled);
+    el("login-submit").textContent = setupMode ? "Set PIN and open workspace" : "Open workspace";
+
+    if (setupMode) {
+      el("department-pin-setup-message").textContent = department.pin_setup_available
+        ? "A one-time setup code is ready. It expires " + formatDateTime(department.pin_setup_expires_at) + ". Enter it once, then choose the four-digit PIN your department will share."
+        : "Ask School Administration to issue a one-time setup code. Refresh this page after the code has been issued. The code expires after 24 hours and works once.";
+    }
+  }
+
   async function loadCatalog() {
     var data = await rpc("ops_catalog");
     state.catalog = data;
     fillSelect(el("login-department"), data.departments || [], { id: "slug", label: "name", first: "Choose department" });
+    updateDepartmentLoginForm();
   }
 
   function storeSession(session) {
@@ -465,10 +518,15 @@
     el("department-login-field").hidden = false;
     el("login-department").required = true;
     el("login-department").value = "";
+    state.pinSetupMode = false;
     el("access-code").value = "";
+    el("department-setup-code").value = "";
+    el("department-new-pin").value = "";
+    el("department-confirm-pin").value = "";
     el("access-code").pattern = "[0-9]{4}";
     var button = el("login-form").querySelector('button[type="submit"]');
     button.disabled = false; button.textContent = "Open workspace"; delete button.dataset.label;
+    updateDepartmentLoginForm();
   }
 
   function showApp() {
@@ -476,7 +534,13 @@
     el("app-shell").hidden = false;
     el("workspace-title").textContent = state.session.display_name || titleCase(state.session.role);
     el("workspace-subtitle").textContent = state.session.role === "department"
-      ? (isKitchenWorkspace() ? "Daily meal service, food planning, stock and reporting" : isClinicWorkspace() ? "Clinic register, medication stock and reporting" : "Purpose-built operations, reporting and support requests")
+      ? (isKitchenWorkspace()
+        ? "Daily meal service, food planning, stock and reporting"
+        : isClinicWorkspace()
+        ? "Clinic register, medication stock and reporting"
+        : isAccommodationWorkspace()
+        ? "Building-by-building student accommodation assignments and residence operations"
+        : "Purpose-built operations, reporting and support requests")
       : titleCase(state.session.role) + " workspace";
     applyRoleVisibility();
   }
@@ -491,8 +555,11 @@
       var departmentAllowed = role !== "department" || currentDepartmentSlug() === node.dataset.departmentSlug;
       node.hidden = !roleAllowed || !departmentAllowed;
     });
+    all("[data-accommodation-only]").forEach(function (node) {
+      node.hidden = role !== "department" || !isAccommodationWorkspace();
+    });
     var overviewButton = el("main-nav").querySelector('[data-view="overview"]');
-    if (overviewButton) overviewButton.hidden = role === "department" && ["kitchen", "clinic"].indexOf(currentDepartmentSlug()) >= 0;
+    if (overviewButton) overviewButton.hidden = role === "department" && (["kitchen", "clinic"].indexOf(currentDepartmentSlug()) >= 0 || isAccommodationWorkspace());
     applyDepartmentNavigation();
     all(".admin-department-field").forEach(function (node) { node.hidden = role === "department"; });
     if (el("members-hod-confirm-field")) el("members-hod-confirm-field").hidden = role !== "department";
@@ -526,7 +593,7 @@
     banner.className = "operating-mode-banner " + (conference ? "conference" : state.mode.mode);
     el("operating-mode-title").textContent = state.mode.combined_label || state.mode.label || titleCase(state.mode.mode) + " Mode";
     el("operating-mode-message").textContent = conference
-      ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions, disables meal collection and removes meal deadlines. Record every piece of work as an Emergency task."
+      ? (state.mode.holiday_mode ? "Holiday calendar rules remain active. " : "School Term calendar rules remain active. ") + "Conference Mode removes manual-work sessions and disables both meal check-in and collection. Record every piece of work as an Emergency task."
       : "Morning and Afternoon task sessions are available during Holiday Mode.";
     var kitchenForm = el("kitchen-checkin-form");
     var kitchenNotice = el("kitchen-conference-notice");
@@ -564,12 +631,18 @@
       try { await rpc("ops_logout", { p_session_token: state.session.session_token }); } catch (error) { /* local logout still proceeds */ }
     }
     state.session = null;
+    state.pinSetupMode = false;
+    state.pinSetupOverview = { setups: [] };
+    state.generatedPinSetupCodes = {};
     state.initialViewApplied = false;
     state.data = null;
     state.studentServices = null;
     state.planning = { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] };
     state.duties = { current_week: null, weeks: [], gate_assignments: [], permissions: {} };
     state.serviceDutyDraft = { week_start: null, kitchen_people: [], toilet_people: [] };
+    state.accommodation = null;
+    state.accommodationBuilding = null;
+    state.accommodationEdit = null;
     state.studentEdit = null;
     state.passReview = null;
     sessionStorage.removeItem("amfcc_ops_session");
@@ -586,6 +659,9 @@
       p_to_date: addDays(from, 62)
     });
     state.data = data;
+    state.pinSetupOverview = state.session.role === "administrator"
+      ? await rpc("ops_department_pin_setup_overview", { p_session_token: state.session.session_token })
+      : { setups: [] };
     state.groups = await rpc("ops_group_planner", {
       p_session_token: state.session.session_token,
       p_from_date: from,
@@ -605,6 +681,8 @@
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
     });
     if (isDepartment()) await loadDepartmentTools(currentDepartmentId());
+    if (isAccommodationWorkspace()) await loadAccommodation();
+    else state.accommodation = null;
     if (!isDepartment()) await loadStudentServices();
     else state.studentServices = null;
     renderAll();
@@ -1287,7 +1365,13 @@
     el("tool-workflow-cards").innerHTML = (profile.workflow || []).map(function (item) {
       return '<article class="workflow-card"><h3>' + escapeHtml(item[0]) + '</h3><p>' + escapeHtml(item[1]) + '</p></article>';
     }).join("");
-    var serviceLink = tools.department_slug === "kitchen" ? '<button class="button primary" type="button" data-open-view="meal-service">Meal check-in</button>' : tools.department_slug === "clinic" ? '<button class="button primary" type="button" data-open-view="clinic-service">Clinic register</button>' : "";
+    var serviceLink = tools.department_slug === "kitchen"
+      ? '<button class="button primary" type="button" data-open-view="meal-service">Meal service</button>'
+      : tools.department_slug === "clinic"
+      ? '<button class="button primary" type="button" data-open-view="clinic-service">Clinic register</button>'
+      : ["conference-centre", "student-accommodation"].indexOf(tools.department_slug) >= 0 && isAccommodationWorkspace()
+      ? '<button class="button primary" type="button" data-open-view="accommodation-service">Accommodation assignments</button>'
+      : "";
     var externalLinks = (profile.externalTools || []).filter(function (tool) { return /^https:\/\//i.test(tool.url || ""); }).map(function (tool) {
       return '<a class="button primary" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(tool.description || tool.label) + '">' + escapeHtml(tool.label) + '</a>';
     }).join("");
@@ -1318,6 +1402,163 @@
     if (result.status !== "success") throw new Error(result.message || "The record could not be saved.");
     await loadDepartmentTools(selectedToolsDepartmentId());
     renderTools();
+  }
+
+  async function loadAccommodation() {
+    if (!isAccommodationWorkspace()) {
+      state.accommodation = null;
+      return;
+    }
+    var result = await rpc("ops_accommodation_dashboard", {
+      p_session_token: state.session.session_token
+    });
+    if (!result || result.status !== "success") {
+      throw new Error(result && result.message || "Accommodation assignments could not be loaded.");
+    }
+    state.accommodation = result;
+    var choices = (result.buildings || []).map(function (building) { return building.name; });
+    if (state.accommodationBuilding !== "__unassigned__" && choices.indexOf(state.accommodationBuilding) < 0) {
+      state.accommodationBuilding = choices[0] || "__unassigned__";
+    }
+  }
+
+  function accommodationStudents() {
+    return state.accommodation && Array.isArray(state.accommodation.students) ? state.accommodation.students : [];
+  }
+
+  function accommodationBuildings() {
+    return state.accommodation && Array.isArray(state.accommodation.buildings) ? state.accommodation.buildings : [];
+  }
+
+  function accommodationStudentById(studentId) {
+    return accommodationStudents().find(function (student) {
+      return String(student.student_id) === String(studentId);
+    }) || null;
+  }
+
+  function accommodationSelectedStudents() {
+    var selected = state.accommodationBuilding || "__unassigned__";
+    return accommodationStudents().filter(function (student) {
+      return selected === "__unassigned__" ? !student.is_allocated : student.residence === selected;
+    });
+  }
+
+  function renderAccommodation() {
+    if (!isAccommodationWorkspace() || !state.accommodation) return;
+
+    var buildings = accommodationBuildings();
+    var names = buildings.map(function (building) { return building.name; });
+    if (state.accommodationBuilding !== "__unassigned__" && names.indexOf(state.accommodationBuilding) < 0) {
+      state.accommodationBuilding = names[0] || "__unassigned__";
+    }
+
+    var assigned = accommodationStudents().filter(function (student) { return student.is_allocated; }).length;
+    var unassigned = Number(state.accommodation.unassigned_count || 0);
+    var selectedRows = accommodationSelectedStudents();
+    var selectedLabel = state.accommodationBuilding === "__unassigned__" ? "Unassigned students" : state.accommodationBuilding;
+
+    el("accommodation-summary").innerHTML = [
+      [buildings.length, "Buildings"],
+      [assigned, "Assigned students"],
+      [unassigned, "Unassigned students"],
+      [selectedRows.length, "In selected view"]
+    ].map(function (item) {
+      return '<article class="summary-card"><div class="label">' + escapeHtml(item[1]) + '</div><div class="value">' + escapeHtml(item[0]) + '</div></article>';
+    }).join("");
+
+    var buildingButtons = buildings.map(function (building) {
+      var active = state.accommodationBuilding === building.name;
+      var detail = building.room_count + (Number(building.room_count) === 1 ? " room" : " rooms");
+      return '<button type="button" role="tab" aria-selected="' + (active ? "true" : "false") + '" class="accommodation-building-choice' + (active ? " active" : "") + '" data-accommodation-building="' + escapeHtml(building.name) + '"><strong>' + escapeHtml(building.name) + '</strong><span>' + escapeHtml(building.student_count) + ' students · ' + escapeHtml(detail) + '</span></button>';
+    });
+    buildingButtons.push('<button type="button" role="tab" aria-selected="' + (state.accommodationBuilding === "__unassigned__" ? "true" : "false") + '" class="accommodation-building-choice unassigned' + (state.accommodationBuilding === "__unassigned__" ? " active" : "") + '" data-accommodation-building="__unassigned__"><strong>Unassigned</strong><span>' + escapeHtml(unassigned) + ' students</span></button>');
+    el("accommodation-building-tabs").innerHTML = buildingButtons.join("");
+
+    el("accommodation-selected-building").textContent = selectedLabel;
+    el("accommodation-selected-count").textContent = String(selectedRows.length);
+    el("accommodation-selected-detail").textContent = state.accommodationBuilding === "__unassigned__"
+      ? "Active students who do not currently have an accommodation assignment."
+      : "Only students assigned to " + state.accommodationBuilding + " are shown.";
+
+    var query = value("accommodation-search").toLowerCase();
+    var rows = selectedRows.filter(function (student) {
+      return !query || [student.student_name, student.room, student.bed, student.allocation_status]
+        .join(" ").toLowerCase().indexOf(query) >= 0;
+    }).sort(function (left, right) {
+      var byRoom = String(left.room || "").localeCompare(String(right.room || ""), undefined, { numeric: true, sensitivity: "base" });
+      return byRoom || String(left.student_name || "").localeCompare(String(right.student_name || ""));
+    });
+
+    el("accommodation-rows").innerHTML = rows.length ? rows.map(function (student) {
+      return '<tr><td><span class="service-person"><strong>' + escapeHtml(student.student_name) + '</strong><small>' + escapeHtml(student.gender || "Student") + '</small></span></td><td>' + escapeHtml(student.room || "—") + '</td><td>' + escapeHtml(student.bed || "—") + '</td><td>' + statusPill(student.allocation_status || "unassigned") + '</td><td>' + escapeHtml(student.updated_at ? formatDateTime(student.updated_at) : "Not assigned") + '</td><td><button class="button quiet accommodation-edit-student" type="button" data-student-id="' + escapeHtml(student.student_id) + '">' + (student.is_allocated ? "Edit" : "Assign") + '</button></td></tr>';
+    }).join("") : '<tr><td colspan="6" class="empty-state">No students match this building view.</td></tr>';
+
+    el("accommodation-building-options").innerHTML = names.map(function (name) {
+      return '<option value="' + escapeHtml(name) + '"></option>';
+    }).join("");
+  }
+
+  function toggleAccommodationEditFields() {
+    var remove = el("accommodation-remove").checked;
+    ["accommodation-edit-building", "accommodation-edit-status", "accommodation-edit-room", "accommodation-edit-bed"].forEach(function (id) {
+      el(id).disabled = remove;
+    });
+    el("accommodation-edit-building").required = !remove;
+  }
+
+  function openAccommodationEdit(studentId) {
+    var student = accommodationStudentById(studentId);
+    if (!student) return toast("Student record not found. Refresh and try again.", true);
+    state.accommodationEdit = Object.assign({}, student);
+    var current = student.is_allocated
+      ? [student.residence, student.room, student.bed].filter(Boolean).join(" · ") + " · " + titleCase(student.allocation_status)
+      : "No current accommodation assignment";
+    el("accommodation-student-summary").innerHTML = '<strong>' + escapeHtml(student.student_name) + '</strong><br><span class="service-secondary">' + escapeHtml(current) + '</span>';
+    el("accommodation-edit-building").value = student.residence || (state.accommodationBuilding === "__unassigned__" ? "" : state.accommodationBuilding || "");
+    el("accommodation-edit-room").value = student.room || "";
+    el("accommodation-edit-bed").value = student.bed || "";
+    el("accommodation-edit-status").value = ["waiting", "allocated", "checked_in", "checked_out"].indexOf(student.allocation_status) >= 0 ? student.allocation_status : "allocated";
+    el("accommodation-remove").checked = false;
+    el("accommodation-remove").disabled = !student.is_allocated;
+    el("accommodation-remove-field").hidden = !student.is_allocated;
+    toggleAccommodationEditFields();
+    el("accommodation-modal").hidden = false;
+    setTimeout(function () { el("accommodation-edit-building").focus(); }, 50);
+  }
+
+  function closeAccommodationEdit() {
+    state.accommodationEdit = null;
+    el("accommodation-modal").hidden = true;
+  }
+
+  async function saveAccommodationEdit(form) {
+    var student = state.accommodationEdit;
+    if (!student) throw new Error("Choose an exact student record first.");
+    var remove = el("accommodation-remove").checked;
+    var building = value("accommodation-edit-building");
+    if (!remove && !building) throw new Error("Choose or enter a building.");
+    setBusy(form, true, "Saving...");
+    try {
+      var result = await rpc("ops_update_student_accommodation", {
+        p_session_token: state.session.session_token,
+        p_student_id: String(student.student_id),
+        p_residence: building || null,
+        p_room: value("accommodation-edit-room") || null,
+        p_bed: value("accommodation-edit-bed") || null,
+        p_allocation_status: value("accommodation-edit-status"),
+        p_remove: remove
+      });
+      if (!result || result.status !== "success") throw new Error(result && result.message || "Accommodation was not saved.");
+      state.accommodationBuilding = remove ? "__unassigned__" : building;
+      closeAccommodationEdit();
+      await loadAccommodation();
+      renderAccommodation();
+      el("accommodation-student").value = "";
+      clearLookupSelection(el("accommodation-student"));
+      toast(result.message || "Accommodation assignment saved.");
+    } finally {
+      setBusy(form, false);
+    }
   }
 
   function normalizeScannedRegistration(raw) {
@@ -1357,13 +1598,13 @@
     var name = result.full_name || "Registration " + (result.registration_number || registrationNumber);
     if (result.status === "checked_in") {
       box.className = "scan-result success";
-      box.innerHTML = '<strong>Checked in</strong><span>' + escapeHtml(name + " · " + result.meal_session) + "</span>";
+      box.innerHTML = '<strong>Collection recorded</strong><span>' + escapeHtml(name + " · " + result.meal_session) + "</span>";
       stateBox.className = "status-pill green";
       stateBox.textContent = "Saved";
       if (navigator.vibrate) navigator.vibrate(80);
     } else if (result.status === "duplicate") {
       box.className = "scan-result warning";
-      box.innerHTML = '<strong>Already checked in</strong><span>' + escapeHtml(name + " · " + (result.meal_session || value("kitchen-meal"))) + "</span>";
+      box.innerHTML = '<strong>Already collected</strong><span>' + escapeHtml(name + " · " + (result.meal_session || value("kitchen-meal"))) + "</span>";
       stateBox.className = "status-pill amber";
       stateBox.textContent = "Duplicate";
       if (navigator.vibrate) navigator.vibrate([60,50,60]);
@@ -1405,17 +1646,27 @@
   }
 
   async function refreshKitchen() {
-    var result = await rpc("ops_kitchen_service", { p_session_token: state.session.session_token, p_action: "dashboard", p_payload: { service_date: today() } });
+    var responses = await Promise.all([
+      rpc("ops_kitchen_service", { p_session_token: state.session.session_token, p_action: "dashboard", p_payload: { service_date: today() } }),
+      rpc("ops_kitchen_meal_check_in_counts", { p_session_token: state.session.session_token, p_service_date: today() })
+    ]);
+    var result = responses[0];
+    var checkins = responses[1];
     if (result.status !== "success") throw new Error(result.message || "Kitchen totals could not be loaded.");
+    if (checkins.status !== "success") throw new Error(checkins.message || "Meal check-in counts could not be loaded.");
     var meals = ["Breakfast","Lunch","Break-fast 4pm","Supper"];
-    el("kitchen-counts").innerHTML = meals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' portions</div><div class="value">' + Number((result.counts || {})[meal] || 0) + '</div></article>'; }).join("") + '<article class="summary-card"><div class="label">Lunch to prepare</div><div class="value">' + Number(result.lunch_to_cook || 0) + '</div></article>';
+    var checkinMeals = ["Breakfast","Lunch","Break-fast 4pm"];
+    el("kitchen-checkin-counts").innerHTML = checkinMeals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' check-ins</div><div class="value">' + Number((checkins.counts || {})[meal] || 0) + '</div></article>'; }).join("");
+    el("kitchen-checkin-mode").className = "status-pill " + (checkins.check_in_enabled ? "green" : "amber");
+    el("kitchen-checkin-mode").textContent = checkins.conference_mode ? "Conference: not needed" : checkins.holiday_mode ? "Holiday: not needed" : "School Term";
+    el("kitchen-counts").innerHTML = meals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' portions</div><div class="value">' + Number((result.counts || {})[meal] || 0) + '</div></article>'; }).join("");
     var recent = result.recent || [];
     el("kitchen-recent").classList.toggle("empty-state", !recent.length);
     el("kitchen-recent").innerHTML = recent.length ? recent.map(function (checkin) {
       var childText = Number(checkin.child_portions || 0) > 0 ? " · " + Number(checkin.child_portions) + " child portion" + (Number(checkin.child_portions) === 1 ? "" : "s") : "";
       var roleText = checkin.recipient_role === "additional" ? " · Additional student" : "";
       return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(checkin.full_name) + '</h3><p>' + escapeHtml(checkin.registration_number + " · " + checkin.meal_session + roleText + childText) + '</p></div><span class="status-pill green">' + escapeHtml(formatDateTime(checkin.checked_in_at)) + '</span></div></article>';
-    }).join("") : "No students checked in yet.";
+    }).join("") : "No collections recorded yet.";
   }
 
   async function refreshClinic() {
@@ -1889,8 +2140,33 @@
   function renderAccess() {
     if (state.session.role !== "administrator") return;
     var departments = (state.data.departments || []).filter(function (d) { return d.workspace_enabled; });
+    var setupMap = {};
+    (state.pinSetupOverview.setups || []).forEach(function (setup) { setupMap[setup.department_id] = setup; });
     el("department-access-list").innerHTML = departments.map(function (department) {
-      return '<article class="access-card"><div class="card-top"><div><h3>' + escapeHtml(department.name) + '</h3><p class="muted">' + (department.login_enabled ? "PIN is enabled" : "No PIN set") + '</p></div>' + statusPill(department.login_enabled ? "green" : "amber") + '</div><form class="department-code-form" data-department="' + department.id + '"><label>New 4-digit PIN<input type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="new-password"></label><label>Recorded by<input class="code-actor" list="student-name-options" data-lookup="student" placeholder="Search exact name" required></label><button class="button secondary" type="submit">Set PIN</button></form></article>';
+      var setup = setupMap[department.id] || { setup_status: "not_issued" };
+      var generated = state.generatedPinSetupCodes[department.id];
+      var setupText = setup.setup_status === "active"
+        ? "One-time setup code is active until " + formatDateTime(setup.expires_at) + "."
+        : setup.setup_status === "locked"
+        ? "Setup code is locked until " + formatDateTime(setup.locked_until) + ". Issue a new code if access is urgent."
+        : setup.setup_status === "expired"
+        ? "The previous setup code expired. Issue a new one when the department is ready."
+        : setup.setup_status === "used"
+        ? "The previous setup code was used."
+        : "No one-time setup code has been issued.";
+      var setupButton = department.login_enabled
+        ? "Issue self-service PIN-change code"
+        : setup.setup_status === "active" ? "Replace first-login code" : "Generate first-login code";
+      var reveal = generated
+        ? '<div class="setup-code-reveal" role="status"><span>Share privately with ' + escapeHtml(department.name) + '. This code is shown only here.</span><strong>' + escapeHtml(generated.setup_code) + '</strong><span>Expires ' + escapeHtml(formatDateTime(generated.expires_at)) + ' and works once.</span></div>'
+        : "";
+      return '<article class="access-card">'
+        + '<div class="card-top"><div><h3>' + escapeHtml(department.name) + '</h3><p class="muted">' + (department.login_enabled ? "Department PIN is active" : "Waiting for its first PIN") + '</p></div>' + statusPill(department.login_enabled ? "green" : "amber") + '</div>'
+        + '<p class="setup-status">' + escapeHtml(setupText) + '</p>'
+        + '<form class="department-setup-form" data-department="' + department.id + '"><label>Issued by<input class="setup-code-actor" list="student-name-options" data-lookup="student" placeholder="Search exact student record" required></label><button class="button primary" type="submit">' + escapeHtml(setupButton) + '</button></form>'
+        + reveal
+        + '<details><summary>Administrator set the PIN directly</summary><form class="department-code-form" data-department="' + department.id + '"><label>New 4-digit PIN<input type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="new-password"></label><label>Recorded by<input class="code-actor" list="student-name-options" data-lookup="student" placeholder="Search exact student record" required></label><button class="button secondary" type="submit">Set PIN directly</button></form></details>'
+        + '</article>';
     }).join("");
     var sync = state.data.jira_sync || { pending: 0, processing: 0, failed: 0, sent: 0 };
     el("jira-sync-counts").innerHTML = [[sync.pending,"Pending"],[sync.processing,"Processing"],[sync.failed,"Failed"],[sync.sent,"Sent"]].map(function (item) {
@@ -1919,6 +2195,7 @@
     renderReports();
     renderTransfers();
     renderTools();
+    renderAccommodation();
     renderStudentServices();
     renderAccess();
     loadDailyReport();
@@ -1940,6 +2217,9 @@
       refreshKitchen().then(focusKitchenScanner).catch(function (error) { toast(error.message, true); });
     }
     if (view === "clinic-service") refreshClinic().catch(function (error) { toast(error.message, true); });
+    if (view === "accommodation-service" && isAccommodationWorkspace() && !state.accommodation) {
+      loadAccommodation().then(renderAccommodation).catch(function (error) { toast(error.message, true); });
+    }
   }
 
   function openTarget(button) {
@@ -2152,20 +2432,57 @@
       else if (person) input.value = person.full_name;
     });
     el("access-type").addEventListener("change", function () {
-      var department = value("access-type") === "department";
-      el("department-login-field").hidden = !department;
-      el("login-department").required = department;
+      state.pinSetupMode = false;
       el("access-code").inputMode = "numeric";
       el("access-code").maxLength = 4;
       el("access-code").pattern = "[0-9]{4}";
+      updateDepartmentLoginForm();
+    });
+    el("login-department").addEventListener("change", function () {
+      state.pinSetupMode = false;
+      el("access-code").value = "";
+      el("department-setup-code").value = "";
+      el("department-new-pin").value = "";
+      el("department-confirm-pin").value = "";
+      updateDepartmentLoginForm();
+    });
+    el("use-department-setup").addEventListener("click", function () {
+      state.pinSetupMode = true;
+      el("access-code").value = "";
+      updateDepartmentLoginForm();
+      el("department-setup-code").focus();
+    });
+    el("use-existing-pin").addEventListener("click", function () {
+      state.pinSetupMode = false;
+      el("department-setup-code").value = "";
+      el("department-new-pin").value = "";
+      el("department-confirm-pin").value = "";
+      updateDepartmentLoginForm();
+      el("access-code").focus();
     });
 
     el("login-form").addEventListener("submit", async function (event) {
-      event.preventDefault(); setBusy(event.currentTarget, true, "Opening...");
+      event.preventDefault();
+      var setupMode = isDepartmentPinSetupMode();
+      setBusy(event.currentTarget, true, setupMode ? "Creating PIN..." : "Opening...");
       try {
-        var result = await rpc("ops_login", { p_access_type: value("access-type"), p_department_slug: value("login-department"), p_access_code: value("access-code") });
+        var chosenPin = value("access-code");
+        var setupResult = null;
+        if (setupMode) {
+          chosenPin = value("department-new-pin");
+          if (chosenPin !== value("department-confirm-pin")) throw new Error("The two new PIN entries do not match.");
+          setupResult = await rpc("ops_claim_department_pin", {
+            p_department_slug: value("login-department"),
+            p_setup_code: value("department-setup-code"),
+            p_new_pin: chosenPin,
+            p_confirm_pin: value("department-confirm-pin")
+          });
+          if (setupResult.status !== "success") throw new Error(setupResult.message || "The department PIN could not be created.");
+          await loadCatalog();
+        }
+        var result = await rpc("ops_login", { p_access_type: value("access-type"), p_department_slug: value("login-department"), p_access_code: chosenPin });
         if (result.status !== "success") throw new Error(result.message || "Sign-in failed.");
-        storeSession(result); showApp(); await loadData(false); toast("Workspace opened.");
+        storeSession(result); showApp(); await loadData(false); toast(setupResult ? "Department PIN created and workspace opened." : "Workspace opened.");
       } catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
@@ -2691,6 +3008,45 @@
     el("clinic-results").addEventListener("click",clinicAction);
     el("clinic-active").addEventListener("click",clinicAction);
 
+    el("accommodation-refresh").addEventListener("click", async function () {
+      setBusy(this, true, "Refreshing...");
+      try {
+        await loadAccommodation();
+        renderAccommodation();
+        toast("Accommodation assignments refreshed.");
+      } catch (error) { toast(error.message, true); }
+      finally { setBusy(this, false); }
+    });
+    el("accommodation-building-tabs").addEventListener("click", function (event) {
+      var button = event.target.closest("[data-accommodation-building]");
+      if (!button) return;
+      state.accommodationBuilding = button.dataset.accommodationBuilding;
+      el("accommodation-search").value = "";
+      renderAccommodation();
+    });
+    el("accommodation-search").addEventListener("input", renderAccommodation);
+    el("accommodation-rows").addEventListener("click", function (event) {
+      var button = event.target.closest(".accommodation-edit-student");
+      if (button) openAccommodationEdit(button.dataset.studentId);
+    });
+    el("accommodation-find-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      try {
+        var person = requireLookup("accommodation-student", "student");
+        openAccommodationEdit(lookupPersonId(person));
+      } catch (error) { toast(error.message, true); }
+    });
+    el("accommodation-remove").addEventListener("change", toggleAccommodationEditFields);
+    el("accommodation-close").addEventListener("click", closeAccommodationEdit);
+    el("accommodation-cancel").addEventListener("click", closeAccommodationEdit);
+    el("accommodation-modal").addEventListener("click", function (event) {
+      if (event.target === this) closeAccommodationEdit();
+    });
+    el("accommodation-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      saveAccommodationEdit(event.currentTarget).catch(function (error) { toast(error.message, true); });
+    });
+
     el("report-review-filter").addEventListener("change", renderReports);
     el("report-review-list").addEventListener("click", async function (event) {
       var button = event.target.closest(".report-transition"); if (!button) return;
@@ -2710,9 +3066,45 @@
     });
 
     el("department-access-list").addEventListener("submit", async function (event) {
-      var form = event.target.closest(".department-code-form"); if (!form) return; event.preventDefault(); setBusy(form, true, "Setting...");
-      try { var actor=requireLookup(form.querySelector(".code-actor"),"student"); var result=await rpc("ops_set_department_pin_v2",{p_session_token:state.session.session_token,p_department_id:form.dataset.department,p_pin:form.querySelector('input[type="password"]').value,p_actor_name:actor.full_name}); if(result.status!=="success")throw new Error(result.message||"PIN could not be set."); form.reset(); await loadData(false); toast("Department PIN set."); }
-      catch (error) { toast(error.message, true); }
+      var setupForm = event.target.closest(".department-setup-form");
+      var pinForm = event.target.closest(".department-code-form");
+      if (!setupForm && !pinForm) return;
+      event.preventDefault();
+      var form = setupForm || pinForm;
+      setBusy(form, true, setupForm ? "Generating..." : "Setting...");
+      try {
+        if (setupForm) {
+          var issuer = requireLookup(form.querySelector(".setup-code-actor"), "student");
+          var setupResult = await rpc("ops_generate_department_pin_setup", {
+            p_session_token: state.session.session_token,
+            p_department_id: form.dataset.department,
+            p_actor_name: issuer.full_name
+          });
+          if (setupResult.status !== "success") throw new Error(setupResult.message || "Setup code could not be generated.");
+          state.generatedPinSetupCodes[form.dataset.department] = {
+            setup_code: setupResult.setup_code,
+            expires_at: setupResult.expires_at
+          };
+          form.reset();
+          await loadCatalog();
+          await loadData(false);
+          toast("One-time department setup code generated.");
+        } else {
+          var actor = requireLookup(form.querySelector(".code-actor"), "student");
+          var result = await rpc("ops_set_department_pin_v2", {
+            p_session_token: state.session.session_token,
+            p_department_id: form.dataset.department,
+            p_pin: form.querySelector('input[type="password"]').value,
+            p_actor_name: actor.full_name
+          });
+          if (result.status !== "success") throw new Error(result.message || "PIN could not be set.");
+          delete state.generatedPinSetupCodes[form.dataset.department];
+          form.reset();
+          await loadCatalog();
+          await loadData(false);
+          toast("Department PIN set directly.");
+        }
+      } catch (error) { toast(error.message, true); }
       finally { setBusy(form, false); }
     });
 

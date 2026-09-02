@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
-  <link rel="stylesheet" href="operations.css?v=11">
+  <link rel="stylesheet" href="operations.css?v=12">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -38,9 +38,28 @@
           </select>
         </div>
 
-        <label for="access-code">4-digit workspace PIN</label>
-        <input id="access-code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
-        <button class="button primary wide" type="submit">Open workspace</button>
+        <div id="access-code-field">
+          <label for="access-code">4-digit workspace PIN</label>
+          <input id="access-code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
+        </div>
+
+        <button id="use-department-setup" class="text-button" type="button" hidden>Use a one-time setup code to choose a new PIN</button>
+
+        <div id="department-pin-setup" class="pin-setup-panel" hidden>
+          <div class="pin-setup-intro">
+            <strong>Create your department PIN</strong>
+            <span id="department-pin-setup-message">Ask School Administration for the one-time setup code.</span>
+          </div>
+          <label for="department-setup-code">8-digit one-time setup code</label>
+          <input id="department-setup-code" type="password" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code">
+          <label for="department-new-pin">Choose a new 4-digit PIN</label>
+          <input id="department-new-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password">
+          <label for="department-confirm-pin">Confirm the new PIN</label>
+          <input id="department-confirm-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password">
+          <button id="use-existing-pin" class="text-button" type="button" hidden>Use the current department PIN instead</button>
+        </div>
+
+        <button id="login-submit" class="button primary wide" type="submit">Open workspace</button>
       </form>
       <a class="button secondary wide public-board-link" href="pod.html">Open live POD task board</a>
       <p class="privacy-note">Departments share one workspace login. Staff select or enter their name only when recording work. Student names are kept out of Jira.</p>
@@ -69,6 +88,7 @@
     <nav id="main-nav" class="tab-bar" aria-label="Workspace sections">
       <button type="button" data-view="meal-service" data-roles="department" data-department-slug="kitchen">Meal service</button>
       <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
+      <button type="button" data-view="accommodation-service" data-roles="department" data-accommodation-only hidden>Accommodation assignments</button>
       <button type="button" data-view="overview" class="active">Overview</button>
       <button type="button" data-view="duties" data-roles="department,student_leadership,management,administrator" data-department-slug="security">Duties</button>
       <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
@@ -98,7 +118,14 @@
         <strong>Meal collection is disabled during Conference Mode.</strong>
         <span>Students and staff cannot create meal collections until Conference Mode is turned off.</span>
       </div>
-      <div id="kitchen-counts" class="summary-grid compact"></div>
+      <section class="meal-count-section">
+        <div class="panel-heading"><div><h3>Students checked in ahead</h3><p>Preparation counts for Breakfast, Lunch and Break-fast 4pm. Supper is cooked for everyone.</p></div><span id="kitchen-checkin-mode" class="status-pill green">School Term</span></div>
+        <div id="kitchen-checkin-counts" class="summary-grid compact"></div>
+      </section>
+      <section class="meal-count-section">
+        <div class="panel-heading"><div><h3>Portions collected</h3><p>Actual portions collected today, including child portions.</p></div></div>
+        <div id="kitchen-counts" class="summary-grid compact"></div>
+      </section>
       <div class="two-column meal-service-grid">
         <article class="panel scanner-panel">
           <div class="panel-heading">
@@ -114,7 +141,7 @@
         </article>
         <article class="panel">
           <div class="panel-heading"><div><h3>Latest collections</h3><p>Most recent meal portions for the selected day, including child portions.</p></div><button id="kitchen-export" class="button secondary" type="button">Export today</button></div>
-          <div id="kitchen-recent" class="card-list empty-state">No students checked in yet.</div>
+          <div id="kitchen-recent" class="card-list empty-state">No collections recorded yet.</div>
         </article>
       </div>
       <article class="panel department-action-panel">
@@ -150,6 +177,66 @@
           <button class="action-tile" type="button" data-open-view="tasks"><strong>Request support</strong><span>Submit the work and extra number needed. Student Leadership chooses the session.</span></button>
         </div>
       </article>
+    </section>
+
+    <section id="view-accommodation-service" class="view" aria-labelledby="accommodation-service-heading">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Protected accommodation register</p>
+          <h2 id="accommodation-service-heading">Student accommodation assignments</h2>
+          <p class="muted">Open one building at a time, see the students assigned there, and update an exact student record.</p>
+        </div>
+        <button id="accommodation-refresh" class="button secondary" type="button">Refresh assignments</button>
+      </div>
+
+      <div id="accommodation-summary" class="summary-grid compact"></div>
+
+      <article class="panel accommodation-building-panel">
+        <div class="panel-heading">
+          <div>
+            <h3>Choose one building</h3>
+            <p>Only the selected building is shown below. Unassigned students have their own view.</p>
+          </div>
+        </div>
+        <div id="accommodation-building-tabs" class="accommodation-building-tabs" role="tablist" aria-label="Accommodation buildings"></div>
+      </article>
+
+      <div class="accommodation-layout">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h3 id="accommodation-selected-building">Building</h3>
+              <p id="accommodation-selected-detail">Student names assigned to this building.</p>
+            </div>
+            <span id="accommodation-selected-count" class="count-badge">0</span>
+          </div>
+          <label class="accommodation-list-search">Filter this building
+            <input id="accommodation-search" type="search" placeholder="Search name, room, bed or status">
+          </label>
+          <div class="table-wrap">
+            <table class="service-table accommodation-table">
+              <thead><tr><th>Student</th><th>Room</th><th>Bed</th><th>Status</th><th>Last changed</th><th>Action</th></tr></thead>
+              <tbody id="accommodation-rows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <aside class="panel accommodation-find-panel">
+          <div class="panel-heading">
+            <div>
+              <h3>Find a student</h3>
+              <p>Use the same exact student lookup used for gate passes.</p>
+            </div>
+          </div>
+          <form id="accommodation-find-form" class="form-stack accommodation-find-form">
+            <label>Student
+              <input id="accommodation-student" list="student-name-options" data-lookup="student" placeholder="Search name or registration number" required>
+            </label>
+            <button class="button primary" type="submit">Open exact student record</button>
+          </form>
+          <div class="callout accommodation-privacy-note">This register shows accommodation-safe assignment information only. Fees, medical information, sponsor details and private administration notes are not included.</div>
+        </aside>
+      </div>
     </section>
 
     <section id="view-overview" class="view active" aria-labelledby="overview-heading">
@@ -642,7 +729,7 @@
 
     <section id="view-access" class="view" aria-labelledby="access-heading">
       <div class="view-heading"><div><p class="eyebrow">One PIN per department</p><h2 id="access-heading">Department logins</h2></div></div>
-      <div class="callout">Each department has its own four-digit PIN. PINs are stored only as bcrypt hashes. Staff still select or enter their name when recording work.</div>
+      <div class="callout">Each department chooses its own four-digit PIN. For initial access, issue an eight-digit one-time setup code and share it privately with that department. The code expires after 24 hours and works once. PINs and setup codes are stored only as bcrypt hashes.</div>
       <div id="department-access-list" class="access-grid"></div>
       <article class="panel jira-status-panel">
         <div class="panel-heading"><h3>Jira management sync</h3><span id="jira-sync-state" class="status-pill neutral">Not configured</span></div>
@@ -650,6 +737,35 @@
         <div id="jira-sync-counts" class="summary-grid compact"></div>
       </article>
     </section>
+
+    <div id="accommodation-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="accommodation-modal-title">
+      <form id="accommodation-form" class="ops-modal-card form-grid">
+        <button id="accommodation-close" class="modal-close-button" type="button" aria-label="Close">×</button>
+        <div class="span-2">
+          <p class="eyebrow">Exact student record</p>
+          <h2 id="accommodation-modal-title">Edit accommodation</h2>
+          <div id="accommodation-student-summary" class="callout"></div>
+        </div>
+        <label>Building
+          <input id="accommodation-edit-building" list="accommodation-building-options" placeholder="Choose or enter a building" required>
+        </label>
+        <label>Accommodation status
+          <select id="accommodation-edit-status" required>
+            <option value="waiting">Waiting</option>
+            <option value="allocated">Allocated</option>
+            <option value="checked_in">Checked in</option>
+            <option value="checked_out">Checked out</option>
+          </select>
+        </label>
+        <label>Room<input id="accommodation-edit-room" placeholder="Optional"></label>
+        <label>Bed<input id="accommodation-edit-bed" placeholder="Optional"></label>
+        <label id="accommodation-remove-field" class="check-row span-2"><input id="accommodation-remove" type="checkbox"> Remove the current accommodation assignment</label>
+        <div class="form-actions span-2">
+          <button id="accommodation-save" class="button primary" type="submit">Save accommodation</button>
+          <button id="accommodation-cancel" class="button quiet" type="button">Cancel</button>
+        </div>
+      </form>
+    </div>
 
     <div id="ss-student-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ss-student-modal-title">
       <form id="ss-student-form" class="ops-modal-card form-grid">
@@ -691,6 +807,7 @@
     <datalist id="staff-name-options"></datalist>
     <datalist id="student-name-options"></datalist>
     <datalist id="leadership-name-options"></datalist>
+    <datalist id="accommodation-building-options"></datalist>
     <datalist id="senior-prefect-options"></datalist>
     <datalist id="department-member-options"></datalist>
     <datalist id="department-hod-options"></datalist>
@@ -727,6 +844,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=11"></script>
+  <script src="operations.js?v=13"></script>
 </body>
 </html>
