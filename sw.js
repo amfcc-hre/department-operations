@@ -1,9 +1,10 @@
-const CACHE='amfcc-department-operations-v15-department-pin-onboarding';
+const CACHE='amfcc-department-operations-v16-immigration-records';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
   './meal-checkin.html','./meal-checkin.css','./meal-checkin.js',
   './pod.html','./pod.css','./pod.js'
+  ,'./immigration.html','./immigration.css','./immigration.js'
 ];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>Promise.all(CORE.map(url=>cache.add(new Request(url,{cache:'reload'})).catch(()=>null)))).then(()=>self.skipWaiting()));
