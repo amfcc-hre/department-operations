@@ -659,9 +659,15 @@
       p_to_date: addDays(from, 62)
     });
     state.data = data;
-    state.pinSetupOverview = state.session.role === "administrator"
-      ? await rpc("ops_department_pin_setup_overview", { p_session_token: state.session.session_token })
-      : { setups: [] };
+    state.pinSetupOverview = { setups: [] };
+    if (state.session.role === "administrator") {
+      try {
+        state.pinSetupOverview = await rpc("ops_department_pin_setup_overview", { p_session_token: state.session.session_token });
+      } catch (setupError) {
+        var setupMessage = String(setupError && setupError.message || setupError || "");
+        if (!/ops_department_pin_setup_overview|schema cache|could not find the function/i.test(setupMessage)) throw setupError;
+      }
+    }
     state.groups = await rpc("ops_group_planner", {
       p_session_token: state.session.session_token,
       p_from_date: from,
