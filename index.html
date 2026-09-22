@@ -642,7 +642,8 @@
           <select id="ss-pass-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
           <select id="ss-pass-year" aria-label="Class"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>
           <select id="ss-pass-campus" aria-label="Campus status"><option value="ALL">All campus statuses</option><option value="IN">On campus</option><option value="OUT">Off campus</option><option value="UNKNOWN">Unknown</option></select>
-          <select id="ss-pass-filter"><option value="ALL">All pass statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="OVERDUE">Overdue</option></select>
+          <select id="ss-pass-filter"><option value="ALL">All active pass statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="OVERDUE">Overdue</option></select>
+          <button id="ss-pass-archive-toggle" class="button secondary" type="button">View rejected and cancelled passes</button>
         </div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Everyone on pass</th><th>Destination</th><th>Status</th><th>Departure and return</th><th>Action</th></tr></thead><tbody id="ss-pass-rows"></tbody></table></div>
       </section>
@@ -795,7 +796,7 @@
           <button id="ss-save-pass-times" class="button secondary span-2" type="button">Save time changes only</button>
         </div>
         <label id="ss-senior-role-field" hidden>Senior staff role<select id="ss-senior-role"><option value="">Choose role</option><option value="principal">Principal</option><option value="dean">Dean</option><option value="director">Director</option></select></label>
-        <label id="ss-pass-comments-field" hidden>Comments or reason<textarea id="ss-pass-comments" rows="3"></textarea></label>
+        <label id="ss-pass-comments-field" hidden>Comments or reason (optional)<textarea id="ss-pass-comments" rows="3" placeholder="Optional"></textarea></label>
         <div id="ss-pass-actions" class="card-actions" hidden>
           <button class="button primary ss-pass-decision" data-decision="approved" type="button">Approve</button>
           <button class="button danger ss-pass-decision" data-decision="rejected" type="button">Reject</button>
@@ -845,6 +846,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=14"></script>
+  <script src="operations.js?v=15"></script>
 </body>
 </html>
