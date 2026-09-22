@@ -242,6 +242,7 @@ School Administration also receives:
 Pass emails are targeted to the person who must act:
 
 - School Administration receives new-pass emails and one unresolved-pending reminder 12 hours after the proposed departure time.
+- Management receives a separate actionable gate-pass email. After entering the Management PIN, the Principal, Dean or Director can review the pass and record an approval or rejection.
 - Student Leadership receives overdue-return alerts and Tanaka or Amalinda Shops alerts after 70 minutes without a later check-in.
 - Routine student status emails are not copied to School Administration or Student Leadership.
 
