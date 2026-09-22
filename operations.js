@@ -31,6 +31,7 @@
     studentTermId: null,
     studentEdit: null,
     passReview: null,
+    showPassArchive: false,
     gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
@@ -1896,14 +1897,19 @@
 
   function renderStudentPasses() {
     var data = state.studentServices || {}, q = value("ss-pass-search").toLowerCase(), filter = value("ss-pass-filter"), gender = value("ss-pass-gender"), year = value("ss-pass-year"), campus = value("ss-pass-campus");
+    var archivedStatuses = ["rejected","cancelled"];
     var rows = (data.gate_passes || []).filter(function (pass) {
+      var archived = archivedStatuses.indexOf(pass.status) >= 0;
+      if (state.showPassArchive !== archived) return false;
       var statusMatch = filter === "ALL" || filter === "OVERDUE" && pass.overdue || pass.status === filter;
       var people = servicePassPeople(pass);
       var personMatch = people.some(function (person) { return servicePersonMatches(person, gender, year, campus); });
       var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
       return statusMatch && personMatch && hay.toLowerCase().indexOf(q) >= 0;
     });
-    el("ss-pass-permission-note").textContent = isLeadership() ? "Student Leadership can view all people and decisions on a pass. Approval remains view only." : state.session.role === "administrator" ? "School Administration can amend departure and return times and make the Administrator decision." : "Management can record a Principal, Dean, or Director decision.";
+    el("ss-pass-permission-note").textContent = state.showPassArchive ? "Rejected and cancelled passes are kept here for reference." : isLeadership() ? "Student Leadership can view all people and decisions on a pass. Approval remains view only." : state.session.role === "administrator" ? "School Administration can amend departure and return times and make the Administrator decision." : "Management can record a Principal, Dean, or Director decision.";
+    el("ss-pass-filter").hidden = state.showPassArchive;
+    el("ss-pass-archive-toggle").textContent = state.showPassArchive ? "Back to current passes" : "View rejected and cancelled passes";
     el("ss-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
       var status = pass.overdue ? "overdue" : pass.status;
       return '<tr class="' + (pass.overdue ? "service-row-overdue" : "") + '"><td>' + servicePeopleHtml(pass) + '</td><td>' + escapeHtml(pass.destination) + '</td><td><span class="service-pill ' + escapeHtml(status) + '">' + escapeHtml(pass.overdue ? "Overdue" : titleCase(pass.status)) + '</span>' + (pass.waiting_on ? '<br><small class="service-secondary">Waiting on ' + escapeHtml(pass.waiting_on) + "</small>" : "") + '</td><td>' + escapeHtml(formatDateTime(pass.departure_at)) + '<br><small class="service-secondary">Return ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</small></td><td><button class="button secondary ss-open-pass" data-id="' + escapeHtml(pass.id) + '" type="button">' + (isLeadership() ? "View" : "Review") + "</button></td></tr>";
@@ -2064,7 +2070,6 @@
   async function saveStudentPassDecision(decision) {
     if (!state.passReview) return;
     var comments = value("ss-pass-comments"), admin = state.session.role === "administrator", result;
-    if (["rejected","cancelled"].indexOf(decision) >= 0 && comments.length < 2) throw new Error("Add a reason for rejecting or cancelling the pass.");
     if (admin) {
       if (!value("ss-pass-departure") || !value("ss-pass-return")) throw new Error("Enter both departure and expected return times.");
       result = await rpc("admin_review_gate_pass", {
@@ -2544,6 +2549,11 @@
     ["ss-campus-search","ss-campus-gender","ss-campus-year","ss-campus-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentCampus); });
     ["ss-accommodation-search","ss-accommodation-gender","ss-accommodation-year","ss-accommodation-campus","ss-accommodation-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentAccommodation); });
     ["ss-pass-search","ss-pass-gender","ss-pass-year","ss-pass-campus","ss-pass-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentPasses); });
+    el("ss-pass-archive-toggle").addEventListener("click", function () {
+      state.showPassArchive = !state.showPassArchive;
+      el("ss-pass-filter").value = "ALL";
+      renderStudentPasses();
+    });
     ["ss-duty-search","ss-duty-gender","ss-duty-year","ss-duty-campus"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentDuty); });
     ["ss-recent-search","ss-recent-gender","ss-recent-year","ss-recent-campus"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentRecent); });
     ["ss-fee-search","ss-fee-gender","ss-fee-year","ss-fee-campus","ss-fee-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentFees); });
