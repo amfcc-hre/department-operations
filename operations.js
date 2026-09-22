@@ -31,6 +31,7 @@
     studentTermId: null,
     studentEdit: null,
     passReview: null,
+    gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
     clinicTimer: null,
@@ -511,12 +512,43 @@
     }
   }
 
+  function readGatePassLink() {
+    var params = new URLSearchParams(window.location.search || "");
+    var passId = String(params.get("pass") || "").trim();
+    var action = String(params.get("pass_action") || "view").toLowerCase();
+    var access = String(params.get("access") || "").toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(passId)) return null;
+    if (["view","approved","rejected"].indexOf(action) < 0) action = "view";
+    if (["management","administrator","student_leadership"].indexOf(access) < 0) access = "management";
+    return { passId:passId, action:action, access:access, handled:false };
+  }
+
+  async function openLinkedGatePass() {
+    var link = state.gatePassLink;
+    if (!link || link.handled || !state.session || state.session.role !== link.access) return;
+    link.handled = true;
+    switchView("student-services");
+    activateStudentServicesTab("passes");
+    try {
+      await openStudentPass(link.passId);
+      var target = el("ss-pass-actions").querySelector('[data-decision="' + link.action + '"]');
+      if (link.action === "rejected") el("ss-pass-comments").focus();
+      else if (link.action === "approved" && state.session.role === "management") el("ss-senior-role").focus();
+      else if (target) target.focus();
+      if (link.action !== "view") toast("Review the pass, choose the correct senior role, then confirm your decision.");
+      window.history.replaceState({},document.title,window.location.pathname);
+    } catch (error) {
+      link.handled = false;
+      toast(error.message || "The linked gate pass could not be opened.",true);
+    }
+  }
+
   function showLogin() {
     el("login-screen").hidden = false;
     el("app-shell").hidden = true;
-    el("access-type").value = "department";
-    el("department-login-field").hidden = false;
-    el("login-department").required = true;
+    el("access-type").value = state.gatePassLink ? state.gatePassLink.access : "department";
+    el("department-login-field").hidden = !!state.gatePassLink;
+    el("login-department").required = !state.gatePassLink;
     el("login-department").value = "";
     state.pinSetupMode = false;
     el("access-code").value = "";
@@ -692,6 +724,7 @@
     if (!isDepartment()) await loadStudentServices();
     else state.studentServices = null;
     renderAll();
+    await openLinkedGatePass();
     if (showMessage) toast("Workspace refreshed.");
   }
 
@@ -3119,6 +3152,7 @@
   }
 
   async function initialise() {
+    state.gatePassLink = readGatePassLink();
     el("range-from").value = today();
     el("request-date").value = addDays(today(), 1);
     el("work-date").value = addDays(today(), 1);
@@ -3165,11 +3199,17 @@
     state.plannerTimer=setInterval(refreshPlannerLive,30000);
     try {
       await loadCatalog();
-      if (restoreSession()) {
+      if (restoreSession() && (!state.gatePassLink || state.session.role === state.gatePassLink.access)) {
         showApp();
         try { await loadData(false); }
         catch (error) { toast(error.message, true); signOut(false); }
-      } else showLogin();
+      } else {
+        if (state.session && state.gatePassLink && state.session.role !== state.gatePassLink.access) {
+          state.session = null;
+          sessionStorage.removeItem("amfcc_ops_session");
+        }
+        showLogin();
+      }
     } catch (error) {
       showLogin(); toast("Could not connect to the operations service. " + error.message, true);
     }
