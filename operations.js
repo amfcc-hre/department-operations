@@ -82,6 +82,9 @@
   function departmentById(id) {
     return (state.data ? state.data.departments : state.catalog.departments || []).find(function (d) { return d.id === id; });
   }
+  function departmentBySlug(slug) {
+    return (state.data ? state.data.departments : state.catalog.departments || []).find(function (d) { return d.slug === slug; });
+  }
   function departmentPath(id) {
     var names = [], seen = {}, department = departmentById(id), guard = 0;
     while (department && !seen[department.id] && guard < 6) {
@@ -897,14 +900,38 @@
     return lookupPool("student").find(function (person) { return String(person.id || person.student_id) === String(studentId || ""); }) || null;
   }
 
+  function dutyGender(person) {
+    var gender = String(person && person.gender || "").trim().toLowerCase();
+    return gender === "male" || gender === "female" ? gender : "";
+  }
+
+  function dutyGenderCounts(type) {
+    return (state.serviceDutyDraft[type + "_people"] || []).reduce(function (counts, person) {
+      var gender = dutyGender(person);
+      counts.total += 1;
+      if (gender) counts[gender] += 1;
+      return counts;
+    }, { total: 0, male: 0, female: 0 });
+  }
+
+  function validateDutyBalance(type) {
+    var counts = dutyGenderCounts(type);
+    if (counts.total !== 4 || counts.male !== 2 || counts.female !== 2) {
+      throw new Error(titleCase(type) + " duty must contain exactly 2 men and 2 women.");
+    }
+  }
+
   function renderDutyPeople(type) {
     var key = type + "_people";
     var rows = state.serviceDutyDraft[key] || [];
     var target = el("service-duty-" + type + "-list");
     target.classList.toggle("empty-state", !rows.length);
     target.innerHTML = rows.length ? rows.map(function (person) {
-      return '<div class="duty-person-row" data-student="' + escapeHtml(person.student_id) + '"><span><strong>' + escapeHtml(person.full_name) + '</strong><small>' + (person.assignment_source === "kitchen_rotation" ? "Copied from last week’s kitchen duty" : "Selected exact student record") + '</small></span><button class="button quiet remove-duty-person" data-duty-type="' + type + '" type="button">Remove</button></div>';
+      var gender = dutyGender(person);
+      return '<div class="duty-person-row" data-student="' + escapeHtml(person.student_id) + '"><span><strong>' + escapeHtml(person.full_name) + '</strong><small>' + escapeHtml(gender ? titleCase(gender) : "Gender not recorded") + ' · ' + (person.assignment_source === "kitchen_rotation" ? "Copied from last week’s kitchen duty" : "Selected exact student record") + '</small></span><button class="button quiet remove-duty-person" data-duty-type="' + type + '" type="button">Remove</button></div>';
     }).join("") : "No students added.";
+    var counts = dutyGenderCounts(type);
+    el("service-duty-" + type + "-count").textContent = counts.total + " of 4 students · " + counts.male + " men · " + counts.female + " women";
   }
 
   function populateServiceDutyForm(weekStart) {
@@ -912,12 +939,14 @@
     var week = dutyWeek(normalized);
     el("service-duty-week").value = normalized;
     el("service-duty-bell").value = week.bell_ringer || "";
-    el("service-duty-kitchen-department").value = week.kitchen_department_id || "";
-    el("service-duty-toilet-department").value = week.toilet_department_id || "";
     state.serviceDutyDraft = {
       week_start: normalized,
-      kitchen_people: (week.kitchen_people || []).map(function (person) { return Object.assign({}, person); }),
-      toilet_people: (week.toilet_people || []).map(function (person) { return Object.assign({}, person); })
+      kitchen_people: (week.kitchen_people || []).map(function (person) {
+        return Object.assign({}, dutyPersonById(person.student_id) || {}, person);
+      }),
+      toilet_people: (week.toilet_people || []).map(function (person) {
+        return Object.assign({}, dutyPersonById(person.student_id) || {}, person);
+      })
     };
     renderDutyPeople("kitchen");
     renderDutyPeople("toilet");
@@ -972,9 +1001,6 @@
 
   function renderDutiesWorkspace() {
     if (!hasDutiesWorkspace()) return;
-    var departments = (state.data.departments || []).filter(function (department) { return department.active && department.workspace_enabled; });
-    fillSelect(el("service-duty-kitchen-department"), departments, { first: "Choose department" });
-    fillSelect(el("service-duty-toilet-department"), departments, { first: "Choose department" });
     if (isLeadership()) {
       populateServiceDutyForm(state.serviceDutyDraft.week_start || state.duties.current_week || mondayFor(today()));
       renderServiceDutyWeeks();
@@ -2733,16 +2759,28 @@
       var button = event.target.closest(".duty-edit"); if (button) populateDutyForm(button.dataset.week);
     });
 
-    function addServiceDutyPerson(type) {
+    async function addServiceDutyPerson(type) {
       try {
         var input = el("service-duty-" + type + "-input");
-        var person = requireLookup(input, "student");
+        var person = exactLookup("student", input.value, input);
+        if (!person) {
+          var search = await searchStudentRecords(input.value);
+          var eligible = (search.matches || []).map(function (match) { return allowedLookupMatch("student", match); }).filter(Boolean);
+          if (eligible.length === 1) person = eligible[0];
+        }
+        if (!person) throw new Error("Choose one student from the search results before adding the name.");
         var key = type + "_people";
         var studentId = person.id || person.student_id;
         if (state.serviceDutyDraft[key].some(function (item) { return String(item.student_id) === String(studentId); })) {
           throw new Error(person.full_name + " is already listed for " + type + " duty.");
         }
-        state.serviceDutyDraft[key].push({ student_id: studentId, full_name: person.full_name, assignment_source: "manual" });
+        if (state.serviceDutyDraft[key].length >= 4) throw new Error(titleCase(type) + " duty already has four students.");
+        var gender = dutyGender(person);
+        if (!gender) throw new Error(person.full_name + " does not have a recorded gender. Update the student record before assigning this duty.");
+        var counts = dutyGenderCounts(type);
+        if (counts[gender] >= 2) throw new Error(titleCase(type) + " duty already has two " + (gender === "male" ? "men" : "women") + ".");
+        setLookupSelection(input, person);
+        state.serviceDutyDraft[key].push({ student_id: studentId, full_name: person.full_name, gender: gender, assignment_source: "manual" });
         input.value = "";
         clearLookupSelection(input);
         hideStudentSearchResults(input);
@@ -2750,8 +2788,8 @@
       } catch (error) { toast(error.message, true); }
     }
 
-    el("service-duty-kitchen-add").addEventListener("click", function () { addServiceDutyPerson("kitchen"); });
-    el("service-duty-toilet-add").addEventListener("click", function () { addServiceDutyPerson("toilet"); });
+    el("service-duty-kitchen-add").addEventListener("click", function () { void addServiceDutyPerson("kitchen"); });
+    el("service-duty-toilet-add").addEventListener("click", function () { void addServiceDutyPerson("toilet"); });
     el("service-duty-week").addEventListener("change", function () { populateServiceDutyForm(this.value); });
     el("service-duty-kitchen-list").addEventListener("click", removeServiceDutyPerson);
     el("service-duty-toilet-list").addEventListener("click", removeServiceDutyPerson);
@@ -2769,16 +2807,19 @@
       event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
       try {
         if (value("service-duty-kitchen-input") || value("service-duty-toilet-input")) throw new Error("Click Add student so every selected name appears in the duty list before saving.");
-        if (!state.serviceDutyDraft.kitchen_people.length) throw new Error("Add at least one student to kitchen duty.");
-        if (!state.serviceDutyDraft.toilet_people.length) throw new Error("Add at least one student to toilet duty.");
+        validateDutyBalance("kitchen");
+        validateDutyBalance("toilet");
         var bell = requireLookup("service-duty-bell", "student");
         var actor = requireLookup("service-duty-actor", "leadership");
+        var kitchenDepartment = departmentBySlug("kitchen");
+        var toiletDepartment = departmentBySlug("toilets");
+        if (!kitchenDepartment || !toiletDepartment) throw new Error("Kitchen or Toilets is missing from the department setup.");
         var result = await rpc("ops_save_service_duties", {
           p_session_token: state.session.session_token,
           p_week_start: value("service-duty-week"),
           p_bell_student_id: bell.id || bell.student_id,
-          p_kitchen_department_id: value("service-duty-kitchen-department"),
-          p_toilet_department_id: value("service-duty-toilet-department"),
+          p_kitchen_department_id: kitchenDepartment.id,
+          p_toilet_department_id: toiletDepartment.id,
           p_kitchen_students: state.serviceDutyDraft.kitchen_people.map(function (person) { return person.student_id; }),
           p_toilet_students: state.serviceDutyDraft.toilet_people.map(function (person) { return person.student_id; }),
           p_actor_student_id: actor.student_id || actor.id

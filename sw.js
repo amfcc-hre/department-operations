@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v16-immigration-records';
+const CACHE='amfcc-department-operations-v17-service-duty-fix';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
