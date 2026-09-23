@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v17-service-duty-fix';
+const CACHE='amfcc-department-operations-v18-duty-draft-preservation';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',

@@ -300,10 +300,10 @@
       </details>
 
       <article id="service-duty-panel" class="panel" data-roles="student_leadership">
-        <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen is always responsible for kitchen duty and Toilets is always responsible for toilet duty. Add exactly two men and two women to each list.</p></div></div>
+        <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen is always responsible for kitchen duty and Toilets is always responsible for toilet duty. Each list allows up to two men and two women, and you can save a partially completed week.</p></div></div>
         <form id="service-duty-form" class="form-grid">
           <label>Week beginning Monday<input id="service-duty-week" type="date" required></label>
-          <label>Bell ringer<input id="service-duty-bell" list="student-name-options" data-lookup="student" required placeholder="Search and select the exact student"></label>
+          <label>Bell ringer (optional)<input id="service-duty-bell" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
 
           <fieldset class="duty-assignment-fieldset span-2">
             <legend>Kitchen duty</legend>
@@ -326,7 +326,7 @@
             <p id="service-duty-rotation-note" class="field-help">Kitchen duty from the previous week will appear here automatically.</p>
           </fieldset>
 
-          <label>Entered by<input id="service-duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search Student Leadership"></label>
+          <label>Entered by (optional)<input id="service-duty-actor" list="leadership-name-options" data-lookup="leadership" placeholder="Search Student Leadership"></label>
           <div class="form-actions"><button class="button primary" type="submit">Save weekly duties</button></div>
         </form>
         <div id="service-duty-weeks" class="compact-list duty-history-list"></div>
@@ -846,6 +846,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=16"></script>
+  <script src="operations.js?v=17"></script>
 </body>
 </html>

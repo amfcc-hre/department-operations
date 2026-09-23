@@ -12,7 +12,7 @@
     groups: { groups: [], allocations: [], holiday_mode: false },
     planning: { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] },
     duties: { current_week: null, weeks: [], gate_assignments: [], permissions: {} },
-    serviceDutyDraft: { week_start: null, kitchen_people: [], toilet_people: [] },
+    serviceDutyDraft: { week_start: null, kitchen_people: [], toilet_people: [], dirty: false },
     plannerView: "daily",
     editingRoster: [],
     editingRosterDepartmentId: null,
@@ -675,7 +675,7 @@
     state.studentServices = null;
     state.planning = { current_duty: {}, duties: [], department_group_counts: [], standing_rules: [] };
     state.duties = { current_week: null, weeks: [], gate_assignments: [], permissions: {} };
-    state.serviceDutyDraft = { week_start: null, kitchen_people: [], toilet_people: [] };
+    state.serviceDutyDraft = { week_start: null, kitchen_people: [], toilet_people: [], dirty: false };
     state.accommodation = null;
     state.accommodationBuilding = null;
     state.accommodationEdit = null;
@@ -914,10 +914,10 @@
     }, { total: 0, male: 0, female: 0 });
   }
 
-  function validateDutyBalance(type) {
+  function validateDutyLimit(type) {
     var counts = dutyGenderCounts(type);
-    if (counts.total !== 4 || counts.male !== 2 || counts.female !== 2) {
-      throw new Error(titleCase(type) + " duty must contain exactly 2 men and 2 women.");
+    if (counts.total > 4 || counts.male > 2 || counts.female > 2 || counts.male + counts.female !== counts.total) {
+      throw new Error(titleCase(type) + " duty can contain up to 2 men and 2 women.");
     }
   }
 
@@ -934,8 +934,14 @@
     el("service-duty-" + type + "-count").textContent = counts.total + " of 4 students · " + counts.male + " men · " + counts.female + " women";
   }
 
-  function populateServiceDutyForm(weekStart) {
+  function populateServiceDutyForm(weekStart, preserveDirty) {
     var normalized = mondayFor(weekStart || today());
+    if (preserveDirty && state.serviceDutyDraft.dirty && state.serviceDutyDraft.week_start === normalized) {
+      el("service-duty-week").value = normalized;
+      renderDutyPeople("kitchen");
+      renderDutyPeople("toilet");
+      return;
+    }
     var week = dutyWeek(normalized);
     el("service-duty-week").value = normalized;
     el("service-duty-bell").value = week.bell_ringer || "";
@@ -946,7 +952,8 @@
       }),
       toilet_people: (week.toilet_people || []).map(function (person) {
         return Object.assign({}, dutyPersonById(person.student_id) || {}, person);
-      })
+      }),
+      dirty: false
     };
     renderDutyPeople("kitchen");
     renderDutyPeople("toilet");
@@ -1002,7 +1009,7 @@
   function renderDutiesWorkspace() {
     if (!hasDutiesWorkspace()) return;
     if (isLeadership()) {
-      populateServiceDutyForm(state.serviceDutyDraft.week_start || state.duties.current_week || mondayFor(today()));
+      populateServiceDutyForm(state.serviceDutyDraft.week_start || state.duties.current_week || mondayFor(today()), true);
       renderServiceDutyWeeks();
     }
     var actorScope = isLeadership() ? "leadership" : "department-member";
@@ -2781,6 +2788,7 @@
         if (counts[gender] >= 2) throw new Error(titleCase(type) + " duty already has two " + (gender === "male" ? "men" : "women") + ".");
         setLookupSelection(input, person);
         state.serviceDutyDraft[key].push({ student_id: studentId, full_name: person.full_name, gender: gender, assignment_source: "manual" });
+        state.serviceDutyDraft.dirty = true;
         input.value = "";
         clearLookupSelection(input);
         hideStudentSearchResults(input);
@@ -2791,12 +2799,16 @@
     el("service-duty-kitchen-add").addEventListener("click", function () { void addServiceDutyPerson("kitchen"); });
     el("service-duty-toilet-add").addEventListener("click", function () { void addServiceDutyPerson("toilet"); });
     el("service-duty-week").addEventListener("change", function () { populateServiceDutyForm(this.value); });
+    el("service-duty-form").addEventListener("input", function (event) {
+      if (event.target.id !== "service-duty-week") state.serviceDutyDraft.dirty = true;
+    });
     el("service-duty-kitchen-list").addEventListener("click", removeServiceDutyPerson);
     el("service-duty-toilet-list").addEventListener("click", removeServiceDutyPerson);
     function removeServiceDutyPerson(event) {
       var button = event.target.closest(".remove-duty-person"); if (!button) return;
       var row = button.closest(".duty-person-row"), type = button.dataset.dutyType, key = type + "_people";
       state.serviceDutyDraft[key] = state.serviceDutyDraft[key].filter(function (person) { return String(person.student_id) !== String(row.dataset.student); });
+      state.serviceDutyDraft.dirty = true;
       renderDutyPeople(type);
     }
     el("service-duty-weeks").addEventListener("click", function (event) {
@@ -2807,26 +2819,27 @@
       event.preventDefault(); setBusy(event.currentTarget, true, "Saving...");
       try {
         if (value("service-duty-kitchen-input") || value("service-duty-toilet-input")) throw new Error("Click Add student so every selected name appears in the duty list before saving.");
-        validateDutyBalance("kitchen");
-        validateDutyBalance("toilet");
-        var bell = requireLookup("service-duty-bell", "student");
-        var actor = requireLookup("service-duty-actor", "leadership");
+        validateDutyLimit("kitchen");
+        validateDutyLimit("toilet");
+        var bell = value("service-duty-bell") ? requireLookup("service-duty-bell", "student") : null;
+        var actor = value("service-duty-actor") ? requireLookup("service-duty-actor", "leadership") : null;
         var kitchenDepartment = departmentBySlug("kitchen");
         var toiletDepartment = departmentBySlug("toilets");
         if (!kitchenDepartment || !toiletDepartment) throw new Error("Kitchen or Toilets is missing from the department setup.");
         var result = await rpc("ops_save_service_duties", {
           p_session_token: state.session.session_token,
           p_week_start: value("service-duty-week"),
-          p_bell_student_id: bell.id || bell.student_id,
+          p_bell_student_id: bell ? bell.id || bell.student_id : null,
           p_kitchen_department_id: kitchenDepartment.id,
           p_toilet_department_id: toiletDepartment.id,
           p_kitchen_students: state.serviceDutyDraft.kitchen_people.map(function (person) { return person.student_id; }),
           p_toilet_students: state.serviceDutyDraft.toilet_people.map(function (person) { return person.student_id; }),
-          p_actor_student_id: actor.student_id || actor.id
+          p_actor_student_id: actor ? actor.student_id || actor.id : null
         });
         if (result.status !== "success") throw new Error(result.message || "The weekly duties were not saved.");
         state.serviceDutyDraft.week_start = value("service-duty-week");
-        await loadData(false); toast("Bell, kitchen and toilet duties saved. Next week’s toilet names were updated automatically.");
+        state.serviceDutyDraft.dirty = false;
+        await loadData(false); toast("Duty changes saved. You can return later to complete the week.");
       } catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
