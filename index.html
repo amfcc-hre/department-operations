@@ -300,14 +300,14 @@
       </details>
 
       <article id="service-duty-panel" class="panel" data-roles="student_leadership">
-        <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen names are copied automatically onto toilet duty for the following week. You can then review and adjust the next week before saving it.</p></div></div>
+        <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen is always responsible for kitchen duty and Toilets is always responsible for toilet duty. Add exactly two men and two women to each list.</p></div></div>
         <form id="service-duty-form" class="form-grid">
           <label>Week beginning Monday<input id="service-duty-week" type="date" required></label>
           <label>Bell ringer<input id="service-duty-bell" list="student-name-options" data-lookup="student" required placeholder="Search and select the exact student"></label>
 
           <fieldset class="duty-assignment-fieldset span-2">
             <legend>Kitchen duty</legend>
-            <label>Responsible department<select id="service-duty-kitchen-department" required><option value="">Choose department</option></select></label>
+            <p class="field-help"><strong>Responsible department:</strong> Kitchen · <span id="service-duty-kitchen-count">0 of 4 students · 0 men · 0 women</span></p>
             <div class="duty-person-add">
               <label>Add student<input id="service-duty-kitchen-input" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
               <button id="service-duty-kitchen-add" class="button secondary" type="button">Add student</button>
@@ -317,7 +317,7 @@
 
           <fieldset class="duty-assignment-fieldset span-2">
             <legend>Toilet duty</legend>
-            <label>Responsible department<select id="service-duty-toilet-department" required><option value="">Choose department</option></select></label>
+            <p class="field-help"><strong>Responsible department:</strong> Toilets · <span id="service-duty-toilet-count">0 of 4 students · 0 men · 0 women</span></p>
             <div class="duty-person-add">
               <label>Add student<input id="service-duty-toilet-input" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
               <button id="service-duty-toilet-add" class="button secondary" type="button">Add student</button>
@@ -846,6 +846,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=15"></script>
+  <script src="operations.js?v=16"></script>
 </body>
 </html>
