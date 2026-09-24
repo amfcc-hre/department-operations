@@ -35,6 +35,7 @@
     adminOfficePasses: null,
     adminOfficePassCompanions: [],
     adminOfficePassReview: null,
+    adminOfficeShowPassArchive: false,
     gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
@@ -691,6 +692,7 @@
     state.adminOfficePasses = null;
     state.adminOfficePassCompanions = [];
     state.adminOfficePassReview = null;
+    state.adminOfficeShowPassArchive = false;
     sessionStorage.removeItem("amfcc_ops_session");
     showLogin();
   }
@@ -2130,11 +2132,16 @@
     if (!isAdministratorsOfficeWorkspace() || !state.adminOfficePasses) return;
     var q = value("ao-pass-search").toLowerCase();
     var filter = value("ao-pass-filter");
+    var archivedStatuses = ["rejected","cancelled"];
     var rows = (state.adminOfficePasses.passes || []).filter(function (pass) {
+      var archived = archivedStatuses.indexOf(pass.status) >= 0;
+      if (state.adminOfficeShowPassArchive !== archived) return false;
       var people = servicePassPeople(pass);
       var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
       return (filter === "ALL" || pass.status === filter) && hay.toLowerCase().indexOf(q) >= 0;
     });
+    el("ao-pass-filter").hidden = state.adminOfficeShowPassArchive;
+    el("ao-pass-archive-toggle").textContent = state.adminOfficeShowPassArchive ? "Back to current passes" : "View rejected and cancelled passes";
     el("ao-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
       return '<tr><td>' + servicePeopleHtml(pass) + '</td><td>' + escapeHtml(pass.destination) + '</td><td><span class="service-pill ' + escapeHtml(pass.status) + '">' + escapeHtml(titleCase(pass.status)) + '</span>' + (pass.waiting_on ? '<br><small class="service-secondary">Waiting on ' + escapeHtml(pass.waiting_on) + '</small>' : '') + '</td><td>' + escapeHtml(formatDateTime(pass.departure_at)) + '<br><small class="service-secondary">Return ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</small></td><td><button class="button secondary ao-view-pass" data-id="' + escapeHtml(pass.id) + '" type="button">View details</button>' + (pass.can_edit ? ' <button class="button quiet ao-edit-pass" data-id="' + escapeHtml(pass.id) + '" type="button">Edit</button>' : '') + '</td></tr>';
     }).join("") : '<tr><td colspan="5" class="empty-state">No matching gate passes.</td></tr>';
@@ -2752,6 +2759,11 @@
     el("ao-pass-cancel-edit").addEventListener("click", resetAdministratorsOfficePassForm);
     ["ao-pass-search","ao-pass-filter"].forEach(function (id) {
       el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderAdministratorsOfficePasses);
+    });
+    el("ao-pass-archive-toggle").addEventListener("click", function () {
+      state.adminOfficeShowPassArchive = !state.adminOfficeShowPassArchive;
+      el("ao-pass-filter").value = "ALL";
+      renderAdministratorsOfficePasses();
     });
     el("ao-pass-rows").addEventListener("click", function (event) {
       var viewButton = event.target.closest(".ao-view-pass");

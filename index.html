@@ -626,7 +626,8 @@
         <div class="panel-heading"><div><h3>Gate-pass records</h3><p>Open any pass to view its full details and approval history.</p></div></div>
         <div class="service-toolbar">
           <input id="ao-pass-search" type="search" placeholder="Search student, registration, or destination">
-          <select id="ao-pass-filter"><option value="ALL">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option></select>
+          <select id="ao-pass-filter"><option value="ALL">All active statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="expired">Expired</option></select>
+          <button id="ao-pass-archive-toggle" class="button secondary" type="button">View rejected and cancelled passes</button>
         </div>
         <div class="table-wrap"><table class="service-table"><thead><tr><th>Everyone on pass</th><th>Destination</th><th>Status</th><th>Departure and return</th><th>Action</th></tr></thead><tbody id="ao-pass-rows"></tbody></table></div>
       </article>
@@ -901,6 +902,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=19"></script>
+  <script src="operations.js?v=20"></script>
 </body>
 </html>
