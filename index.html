@@ -97,6 +97,7 @@
       <button type="button" data-view="period-report" data-roles="department,management">Weekly / monthly</button>
       <button type="button" data-view="tools" data-roles="department,management">Department tools</button>
       <button type="button" data-view="transfers" data-roles="department,management">Transfers</button>
+      <button type="button" data-view="admin-office-passes" data-roles="department" data-department-slug="administrators-office">Gate passes</button>
       <button type="button" data-view="student-services" data-roles="student_leadership,management,administrator">Student services</button>
       <a class="tab-link" href="immigration.html" data-roles="department,management,administrator" data-department-slug="immigration">Immigration records</a>
       <button type="button" data-view="reports" data-roles="management,administrator">Review reports</button>
@@ -333,10 +334,10 @@
       </article>
 
       <article id="gate-duty-panel" class="panel" data-roles="department,student_leadership" data-department-slug="security">
-        <div class="panel-heading"><div><p class="eyebrow">Student Leadership and Security only</p><h3>Gate duty</h3><p>Choose one exact student for each slot. The duty date starts at 10:00 pm; the midnight and 2:00 am slots continue into the following morning.</p></div></div>
+        <div class="panel-heading"><div><p class="eyebrow">Student Leadership and Security only</p><h3>Gate duty</h3><p>Choose one exact student for each slot. The duty date starts at 8:00 pm; the midnight and 2:00 am slots continue into the following morning.</p></div></div>
         <form id="gate-duty-form" class="form-grid">
           <label>Duty date<input id="gate-duty-date" type="date" required></label>
-          <label>10:00 pm to 12:00 am<input id="gate-duty-2200" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
+          <label>8:00 pm to 12:00 am<input id="gate-duty-2200" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
           <label>12:00 am to 2:00 am<input id="gate-duty-0000" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
           <label>2:00 am to 4:00 am<input id="gate-duty-0200" list="student-name-options" data-lookup="student" required placeholder="Search and select a student"></label>
           <label>Entered by<input id="gate-duty-actor" list="leadership-name-options" data-lookup="leadership" required placeholder="Search your exact record"></label>
@@ -589,6 +590,48 @@
       <div id="transfer-list" class="card-list empty-state">No transfers in this period.</div>
     </section>
 
+    <section id="view-admin-office-passes" class="view" aria-labelledby="admin-office-passes-heading">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Administrator's Office</p>
+          <h2 id="admin-office-passes-heading">Gate passes</h2>
+          <p class="muted">Submit, view and edit gate passes at any time. The student submission deadline does not apply to this office.</p>
+        </div>
+        <button id="ao-pass-refresh" class="button secondary" type="button">Refresh passes</button>
+      </div>
+
+      <div class="callout">Passes still require the normal approvals. Editing and resubmitting a pass resets its previous approvals so the updated details can be reviewed again.</div>
+
+      <form id="ao-pass-form" class="panel form-grid">
+        <div class="panel-heading span-2"><div><h3 id="ao-pass-form-title">Submit a gate pass</h3><p>No Wednesday deadline applies.</p></div></div>
+        <input id="ao-pass-id" type="hidden">
+        <label class="span-2">Primary student<input id="ao-pass-primary" list="student-name-options" data-lookup="student" required placeholder="Search name or registration number"></label>
+        <label>Departure<input id="ao-pass-departure" type="datetime-local" required></label>
+        <label>Expected return<input id="ao-pass-return" type="datetime-local" required></label>
+        <label class="span-2">Destination<input id="ao-pass-destination" required></label>
+        <label class="span-2">Reason<textarea id="ao-pass-reason" rows="2" required></textarea></label>
+        <label class="span-2">Contact details<input id="ao-pass-contact" required></label>
+        <div class="span-2">
+          <label>Additional person<input id="ao-pass-companion" list="student-name-options" data-lookup="student" placeholder="Optional, up to five people"></label>
+          <button id="ao-pass-add-companion" class="button secondary" type="button">Add person</button>
+          <ul id="ao-pass-companions" class="pass-review-list"><li class="service-secondary">No additional people.</li></ul>
+        </div>
+        <div class="form-actions span-2">
+          <button id="ao-pass-save" class="button primary" type="submit">Submit gate pass</button>
+          <button id="ao-pass-cancel-edit" class="button quiet" type="button" hidden>Cancel editing</button>
+        </div>
+      </form>
+
+      <article class="panel">
+        <div class="panel-heading"><div><h3>Gate-pass records</h3><p>Open any pass to view its full details and approval history.</p></div></div>
+        <div class="service-toolbar">
+          <input id="ao-pass-search" type="search" placeholder="Search student, registration, or destination">
+          <select id="ao-pass-filter"><option value="ALL">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="departed">Departed</option><option value="returned">Returned</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option></select>
+        </div>
+        <div class="table-wrap"><table class="service-table"><thead><tr><th>Everyone on pass</th><th>Destination</th><th>Status</th><th>Departure and return</th><th>Action</th></tr></thead><tbody id="ao-pass-rows"></tbody></table></div>
+      </article>
+    </section>
+
     <section id="view-student-services" class="view" aria-labelledby="student-services-heading">
       <div class="view-heading">
         <div>
@@ -806,6 +849,18 @@
       </div>
     </div>
 
+    <div id="ao-pass-modal" class="ops-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ao-pass-modal-title">
+      <div class="ops-modal-card">
+        <button id="ao-pass-modal-close" class="modal-close-button" type="button" aria-label="Close">×</button>
+        <p class="eyebrow">Administrator's Office</p><h2 id="ao-pass-modal-title">Gate-pass details</h2>
+        <div id="ao-pass-details"></div>
+        <div class="card-actions">
+          <button id="ao-pass-modal-edit" class="button primary" type="button">Edit and resubmit</button>
+          <button id="ao-pass-modal-done" class="button quiet" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
     <datalist id="staff-name-options"></datalist>
     <datalist id="student-name-options"></datalist>
     <datalist id="leadership-name-options"></datalist>
@@ -846,6 +901,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=17"></script>
+  <script src="operations.js?v=19"></script>
 </body>
 </html>

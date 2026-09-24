@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v18-duty-draft-preservation';
+const CACHE='amfcc-department-operations-v20-admin-office-gate-passes';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',

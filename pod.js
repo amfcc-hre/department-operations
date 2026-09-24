@@ -8,7 +8,7 @@
   function renderGateDuty(duty,workDate){
     var rows=(duty.gate_assignments||[]).filter(function(row){return row.duty_date===workDate;});
     var slots=[
-      {code:"22_00",label:"10:00 pm to 12:00 am"},
+      {code:"22_00",label:"8:00 pm to 12:00 am"},
       {code:"00_02",label:"12:00 am to 2:00 am"},
       {code:"02_04",label:"2:00 am to 4:00 am"}
     ];

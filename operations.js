@@ -32,6 +32,9 @@
     studentEdit: null,
     passReview: null,
     showPassArchive: false,
+    adminOfficePasses: null,
+    adminOfficePassCompanions: [],
+    adminOfficePassReview: null,
     gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
@@ -165,6 +168,7 @@
   function isKitchenWorkspace() { return isDepartment() && currentDepartmentSlug() === "kitchen"; }
   function isClinicWorkspace() { return isDepartment() && currentDepartmentSlug() === "clinic"; }
   function isSecurityWorkspace() { return isDepartment() && currentDepartmentSlug() === "security"; }
+  function isAdministratorsOfficeWorkspace() { return isDepartment() && currentDepartmentSlug() === "administrators-office"; }
   function isAccommodationWorkspace() {
     return isDepartment() && ["conference-centre", "student-accommodation"].indexOf(currentDepartmentSlug()) >= 0;
   }
@@ -385,6 +389,7 @@
     if (isClinicWorkspace()) return "clinic-service";
     if (isAccommodationWorkspace()) return "accommodation-service";
     if (isSecurityWorkspace()) return "duties";
+    if (isAdministratorsOfficeWorkspace()) return "admin-office-passes";
     return isDepartment() ? "tools" : "overview";
   }
 
@@ -576,6 +581,8 @@
         ? "Clinic register, medication stock and reporting"
         : isAccommodationWorkspace()
         ? "Building-by-building student accommodation assignments and residence operations"
+        : isAdministratorsOfficeWorkspace()
+        ? "Gate passes, office records and administrative operations"
         : "Purpose-built operations, reporting and support requests")
       : titleCase(state.session.role) + " workspace";
     applyRoleVisibility();
@@ -681,6 +688,9 @@
     state.accommodationEdit = null;
     state.studentEdit = null;
     state.passReview = null;
+    state.adminOfficePasses = null;
+    state.adminOfficePassCompanions = [];
+    state.adminOfficePassReview = null;
     sessionStorage.removeItem("amfcc_ops_session");
     showLogin();
   }
@@ -723,6 +733,8 @@
       request.request_kind = (state.groups.request_kinds || {})[request.id] || "planned";
     });
     if (isDepartment()) await loadDepartmentTools(currentDepartmentId());
+    if (isAdministratorsOfficeWorkspace()) await loadAdministratorsOfficePasses();
+    else state.adminOfficePasses = null;
     if (isAccommodationWorkspace()) await loadAccommodation();
     else state.accommodation = null;
     if (!isDepartment()) await loadStudentServices();
@@ -1002,7 +1014,7 @@
     el("gate-duty-days").classList.toggle("empty-state", !dates.length);
     el("gate-duty-days").innerHTML = dates.length ? dates.map(function (date) {
       var rows = gateRowsForDate(date);
-      return '<button type="button" class="compact-row gate-duty-edit" data-date="' + escapeHtml(date) + '"><span><strong>' + escapeHtml(formatDate(date)) + '</strong><small class="gate-slot-stack"><span>10 pm: ' + escapeHtml(gateStudentName(rows, "22_00") || "Not entered") + '</span><span>12 am: ' + escapeHtml(gateStudentName(rows, "00_02") || "Not entered") + '</span><span>2 am: ' + escapeHtml(gateStudentName(rows, "02_04") || "Not entered") + '</span></small></span><span class="button quiet">Edit</span></button>';
+      return '<button type="button" class="compact-row gate-duty-edit" data-date="' + escapeHtml(date) + '"><span><strong>' + escapeHtml(formatDate(date)) + '</strong><small class="gate-slot-stack"><span>8 pm: ' + escapeHtml(gateStudentName(rows, "22_00") || "Not entered") + '</span><span>12 am: ' + escapeHtml(gateStudentName(rows, "00_02") || "Not entered") + '</span><span>2 am: ' + escapeHtml(gateStudentName(rows, "02_04") || "Not entered") + '</span></small></span><span class="button quiet">Edit</span></button>';
     }).join("") : "No gate-duty days entered yet.";
   }
 
@@ -2011,6 +2023,150 @@
     renderStudentSettings();
   }
 
+  async function loadAdministratorsOfficePasses() {
+    if (!isAdministratorsOfficeWorkspace()) return;
+    var result = await rpc("ops_administrators_office_gate_passes", {
+      p_session_token: state.session.session_token
+    });
+    if (!result || result.status !== "success") throw new Error(result && result.message || "Gate passes could not be loaded.");
+    state.adminOfficePasses = result;
+  }
+
+  function adminOfficePassById(passId) {
+    return ((state.adminOfficePasses && state.adminOfficePasses.passes) || []).find(function (pass) { return pass.id === passId; }) || null;
+  }
+
+  function renderAdministratorsOfficeCompanions() {
+    var list = el("ao-pass-companions");
+    if (!list) return;
+    list.innerHTML = state.adminOfficePassCompanions.length ? state.adminOfficePassCompanions.map(function (person) {
+      return '<li><strong>' + escapeHtml(lookupPersonName(person)) + '</strong> (' + escapeHtml(lookupRegistration(person)) + ') <button class="button quiet ao-remove-companion" data-registration="' + escapeHtml(lookupRegistration(person)) + '" type="button">Remove</button></li>';
+    }).join("") : '<li class="service-secondary">No additional people.</li>';
+  }
+
+  function resetAdministratorsOfficePassForm() {
+    var form = el("ao-pass-form");
+    if (!form) return;
+    form.reset();
+    el("ao-pass-id").value = "";
+    clearLookupSelection(el("ao-pass-primary"));
+    clearLookupSelection(el("ao-pass-companion"));
+    state.adminOfficePassCompanions = [];
+    renderAdministratorsOfficeCompanions();
+    el("ao-pass-form-title").textContent = "Submit a gate pass";
+    el("ao-pass-save").textContent = "Submit gate pass";
+    el("ao-pass-cancel-edit").hidden = true;
+  }
+
+  function addAdministratorsOfficeCompanion() {
+    var person = requireLookup("ao-pass-companion", "student");
+    var registration = lookupRegistration(person);
+    var primaryRegistration = el("ao-pass-primary").dataset.selectedRegistration || "";
+    if (registration === primaryRegistration) throw new Error("The primary student cannot also be an additional person.");
+    if (state.adminOfficePassCompanions.some(function (item) { return lookupRegistration(item) === registration; })) throw new Error("That student is already on this pass.");
+    if (state.adminOfficePassCompanions.length >= 5) throw new Error("A gate pass can include up to five additional people.");
+    state.adminOfficePassCompanions.push(person);
+    el("ao-pass-companion").value = "";
+    clearLookupSelection(el("ao-pass-companion"));
+    renderAdministratorsOfficeCompanions();
+  }
+
+  function administratorsOfficePassDetails(pass) {
+    var people = servicePassPeople(pass);
+    var approvals = (pass.approvals || []).map(function (approval) {
+      return '<div class="approval-review-row"><strong>' + escapeHtml(titleCase(approval.role === "administrator" ? "School Administration" : approval.role)) + '</strong><br><span class="service-secondary">' + escapeHtml(titleCase(approval.decision)) + ' · ' + escapeHtml(formatDateTime(approval.decided_at)) + '</span>' + (approval.comments ? '<br><span class="service-secondary">' + escapeHtml(approval.comments) + '</span>' : '') + '</div>';
+    }).join("") || '<p class="service-secondary">No decisions yet.</p>';
+    return '<p><strong>Applicant:</strong> ' + escapeHtml(pass.student_name) + ' (' + escapeHtml(pass.registration_number) + ')</p>' +
+      '<h3>Everyone on this pass</h3><ul class="pass-review-list">' + people.map(function (person) {
+        return '<li><strong>' + escapeHtml(person.student_name) + '</strong> (' + escapeHtml(person.registration_number) + ')' + (person.is_primary ? ' · Applicant' : '') + '</li>';
+      }).join("") + '</ul>' +
+      '<p><strong>Destination:</strong> ' + escapeHtml(pass.destination) + '</p>' +
+      '<p><strong>Reason:</strong> ' + escapeHtml(pass.reason) + '</p>' +
+      '<p><strong>Contact:</strong> ' + escapeHtml(pass.contact_details) + '</p>' +
+      '<p><strong>Departure:</strong> ' + escapeHtml(formatDateTime(pass.departure_at)) + '</p>' +
+      '<p><strong>Expected return:</strong> ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</p>' +
+      '<p><strong>Status:</strong> ' + escapeHtml(titleCase(pass.status)) + (pass.waiting_on ? ' · Waiting on ' + escapeHtml(pass.waiting_on) : '') + '</p>' +
+      '<h3>Approval history</h3>' + approvals;
+  }
+
+  function openAdministratorsOfficePass(passId) {
+    var pass = adminOfficePassById(passId);
+    if (!pass) return toast("Gate pass not found. Refresh and try again.", true);
+    state.adminOfficePassReview = pass;
+    el("ao-pass-details").innerHTML = administratorsOfficePassDetails(pass);
+    el("ao-pass-modal-edit").hidden = !pass.can_edit;
+    el("ao-pass-modal").hidden = false;
+  }
+
+  function closeAdministratorsOfficePass() {
+    state.adminOfficePassReview = null;
+    el("ao-pass-modal").hidden = true;
+  }
+
+  function editAdministratorsOfficePass(passId) {
+    var pass = adminOfficePassById(passId);
+    if (!pass || !pass.can_edit) return toast("This pass can no longer be edited.", true);
+    el("ao-pass-id").value = pass.id;
+    setLookupSelection(el("ao-pass-primary"), {
+      student_id: pass.student_id,
+      student_name: pass.student_name,
+      registration_number: pass.registration_number
+    });
+    el("ao-pass-departure").value = datetimeLocal(pass.departure_at);
+    el("ao-pass-return").value = datetimeLocal(pass.expected_return_at);
+    el("ao-pass-destination").value = pass.destination || "";
+    el("ao-pass-reason").value = pass.reason || "";
+    el("ao-pass-contact").value = pass.contact_details || "";
+    state.adminOfficePassCompanions = servicePassPeople(pass).filter(function (person) { return !person.is_primary; });
+    renderAdministratorsOfficeCompanions();
+    el("ao-pass-form-title").textContent = "Edit and resubmit gate pass";
+    el("ao-pass-save").textContent = "Save and resubmit";
+    el("ao-pass-cancel-edit").hidden = false;
+    closeAdministratorsOfficePass();
+    el("ao-pass-form").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+
+  function renderAdministratorsOfficePasses() {
+    if (!isAdministratorsOfficeWorkspace() || !state.adminOfficePasses) return;
+    var q = value("ao-pass-search").toLowerCase();
+    var filter = value("ao-pass-filter");
+    var rows = (state.adminOfficePasses.passes || []).filter(function (pass) {
+      var people = servicePassPeople(pass);
+      var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
+      return (filter === "ALL" || pass.status === filter) && hay.toLowerCase().indexOf(q) >= 0;
+    });
+    el("ao-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
+      return '<tr><td>' + servicePeopleHtml(pass) + '</td><td>' + escapeHtml(pass.destination) + '</td><td><span class="service-pill ' + escapeHtml(pass.status) + '">' + escapeHtml(titleCase(pass.status)) + '</span>' + (pass.waiting_on ? '<br><small class="service-secondary">Waiting on ' + escapeHtml(pass.waiting_on) + '</small>' : '') + '</td><td>' + escapeHtml(formatDateTime(pass.departure_at)) + '<br><small class="service-secondary">Return ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</small></td><td><button class="button secondary ao-view-pass" data-id="' + escapeHtml(pass.id) + '" type="button">View details</button>' + (pass.can_edit ? ' <button class="button quiet ao-edit-pass" data-id="' + escapeHtml(pass.id) + '" type="button">Edit</button>' : '') + '</td></tr>';
+    }).join("") : '<tr><td colspan="5" class="empty-state">No matching gate passes.</td></tr>';
+  }
+
+  async function saveAdministratorsOfficePass(form) {
+    var primary = requireLookup("ao-pass-primary", "student");
+    var passId = value("ao-pass-id") || null;
+    var current = passId ? adminOfficePassById(passId) : null;
+    if (current && (current.approvals || []).length && !window.confirm("Saving these changes will reset the existing approvals and return the pass to Pending. Continue?")) return;
+    setBusy(form, true, passId ? "Resubmitting..." : "Submitting...");
+    try {
+      var result = await rpc("ops_administrators_office_save_gate_pass", {
+        p_session_token: state.session.session_token,
+        p_pass_id: passId,
+        p_primary_registration: lookupRegistration(primary),
+        p_destination: value("ao-pass-destination"),
+        p_reason: value("ao-pass-reason"),
+        p_departure_at: new Date(value("ao-pass-departure")).toISOString(),
+        p_expected_return_at: new Date(value("ao-pass-return")).toISOString(),
+        p_contact_details: value("ao-pass-contact"),
+        p_companions: state.adminOfficePassCompanions.map(lookupRegistration)
+      });
+      if (!result || result.status !== "success") throw new Error(result && result.message || "The gate pass could not be saved.");
+      dispatchPassEmail();
+      resetAdministratorsOfficePassForm();
+      await loadAdministratorsOfficePasses();
+      renderAdministratorsOfficePasses();
+      toast(passId ? "Gate pass updated and returned for approval." : "Gate pass submitted for approval.");
+    } finally { setBusy(form, false); }
+  }
+
   function toggleStudentEditFields() {
     var offCampus = value("ss-edit-campus-status") === "OUT";
     el("ss-edit-outing-type").disabled = !offCampus;
@@ -2273,6 +2429,7 @@
     renderTransfers();
     renderTools();
     renderAccommodation();
+    renderAdministratorsOfficePasses();
     renderStudentServices();
     renderAccess();
     loadDailyReport();
@@ -2296,6 +2453,9 @@
     if (view === "clinic-service") refreshClinic().catch(function (error) { toast(error.message, true); });
     if (view === "accommodation-service" && isAccommodationWorkspace() && !state.accommodation) {
       loadAccommodation().then(renderAccommodation).catch(function (error) { toast(error.message, true); });
+    }
+    if (view === "admin-office-passes" && isAdministratorsOfficeWorkspace() && !state.adminOfficePasses) {
+      loadAdministratorsOfficePasses().then(renderAdministratorsOfficePasses).catch(function (error) { toast(error.message, true); });
     }
   }
 
@@ -2568,6 +2728,43 @@
     el("range-from").addEventListener("change", function () { loadData(false).catch(function (error) { toast(error.message, true); }); });
     el("main-nav").addEventListener("click", function (event) { var button = event.target.closest("button[data-view]"); if (button) switchView(button.dataset.view); });
     el("app-shell").addEventListener("click", function (event) { var button = event.target.closest("[data-open-view]"); if (button) openTarget(button); });
+
+    el("ao-pass-refresh").addEventListener("click", async function () {
+      setBusy(this, true, "Refreshing...");
+      try { await loadAdministratorsOfficePasses(); renderAdministratorsOfficePasses(); toast("Gate passes refreshed."); }
+      catch (error) { toast(error.message, true); }
+      finally { setBusy(this, false); }
+    });
+    el("ao-pass-add-companion").addEventListener("click", function () {
+      try { addAdministratorsOfficeCompanion(); }
+      catch (error) { toast(error.message, true); }
+    });
+    el("ao-pass-companions").addEventListener("click", function (event) {
+      var button = event.target.closest(".ao-remove-companion");
+      if (!button) return;
+      state.adminOfficePassCompanions = state.adminOfficePassCompanions.filter(function (person) { return lookupRegistration(person) !== button.dataset.registration; });
+      renderAdministratorsOfficeCompanions();
+    });
+    el("ao-pass-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      saveAdministratorsOfficePass(event.currentTarget).catch(function (error) { toast(error.message, true); });
+    });
+    el("ao-pass-cancel-edit").addEventListener("click", resetAdministratorsOfficePassForm);
+    ["ao-pass-search","ao-pass-filter"].forEach(function (id) {
+      el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderAdministratorsOfficePasses);
+    });
+    el("ao-pass-rows").addEventListener("click", function (event) {
+      var viewButton = event.target.closest(".ao-view-pass");
+      if (viewButton) { openAdministratorsOfficePass(viewButton.dataset.id); return; }
+      var editButton = event.target.closest(".ao-edit-pass");
+      if (editButton) editAdministratorsOfficePass(editButton.dataset.id);
+    });
+    el("ao-pass-modal-close").addEventListener("click", closeAdministratorsOfficePass);
+    el("ao-pass-modal-done").addEventListener("click", closeAdministratorsOfficePass);
+    el("ao-pass-modal").addEventListener("click", function (event) { if (event.target === this) closeAdministratorsOfficePass(); });
+    el("ao-pass-modal-edit").addEventListener("click", function () {
+      if (state.adminOfficePassReview) editAdministratorsOfficePass(state.adminOfficePassReview.id);
+    });
 
     el("student-services-tabs").addEventListener("click", function (event) {
       var button = event.target.closest("button[data-ss-tab]");
