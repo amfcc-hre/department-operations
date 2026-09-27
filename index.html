@@ -606,6 +606,7 @@
         <div class="panel-heading span-2"><div><h3 id="ao-pass-form-title">Submit a gate pass</h3><p>No Wednesday deadline applies.</p></div></div>
         <input id="ao-pass-id" type="hidden">
         <label class="span-2">Primary student<input id="ao-pass-primary" list="student-name-options" data-lookup="student" required placeholder="Search name or registration number"></label>
+        <label class="span-2">Student email<input id="ao-pass-email" type="email" autocomplete="email" required placeholder="student@example.com"></label>
         <label>Departure<input id="ao-pass-departure" type="datetime-local" required></label>
         <label>Expected return<input id="ao-pass-return" type="datetime-local" required></label>
         <label class="span-2">Destination<input id="ao-pass-destination" required></label>
@@ -681,6 +682,22 @@
 
       <section id="ss-tab-passes" class="student-service-section panel">
         <div class="panel-heading"><div><h3>Gate passes</h3><p id="ss-pass-permission-note">All people attached to a pass are shown together.</p></div></div>
+        <form id="sl-emergency-pass-form" class="form-grid" data-ss-leadership-only hidden>
+          <div class="callout span-2"><strong>Emergency gate pass</strong><br>Senior Student Leadership may submit after the normal deadline. The usual School Administration and Management approvals still apply.</div>
+          <label class="span-2">Primary student<input id="sl-pass-primary" list="student-name-options" data-lookup="student" required placeholder="Search name or registration number"></label>
+          <label class="span-2">Student email<input id="sl-pass-email" type="email" autocomplete="email" required placeholder="student@example.com"></label>
+          <label>Departure<input id="sl-pass-departure" type="datetime-local" required></label>
+          <label>Expected return<input id="sl-pass-return" type="datetime-local" required></label>
+          <label class="span-2">Destination<input id="sl-pass-destination" required></label>
+          <label class="span-2">Reason<textarea id="sl-pass-reason" rows="2" required></textarea></label>
+          <label class="span-2">Contact details<input id="sl-pass-contact" required></label>
+          <div class="span-2">
+            <label>Additional person<input id="sl-pass-companion" list="student-name-options" data-lookup="student" placeholder="Optional, up to five people"></label>
+            <button id="sl-pass-add-companion" class="button secondary" type="button">Add person</button>
+            <ul id="sl-pass-companions" class="pass-review-list"><li class="service-secondary">No additional people.</li></ul>
+          </div>
+          <div class="form-actions span-2"><button class="button primary" type="submit">Submit emergency pass</button></div>
+        </form>
         <div class="service-toolbar">
           <input id="ss-pass-search" type="search" placeholder="Search person, registration, or destination">
           <select id="ss-pass-gender" aria-label="Gender"><option value="ALL">All genders</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select>
@@ -902,6 +919,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=20"></script>
+  <script src="operations.js?v=22"></script>
 </body>
 </html>

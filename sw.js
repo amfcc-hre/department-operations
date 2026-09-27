@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v21-admin-office-pass-archive';
+const CACHE='amfcc-department-operations-v22-emergency-gate-passes';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',

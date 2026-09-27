@@ -36,6 +36,7 @@
     adminOfficePassCompanions: [],
     adminOfficePassReview: null,
     adminOfficeShowPassArchive: false,
+    leadershipPassCompanions: [],
     gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
@@ -1890,6 +1891,7 @@
   function configureStudentServiceVisibility() {
     var admin = state.session.role === "administrator";
     all("[data-ss-admin-only]").forEach(function (node) { node.hidden = !admin; });
+    all("[data-ss-leadership-only]").forEach(function (node) { node.hidden = !isLeadership(); });
     el("ss-accommodation-fees-heading").hidden = !admin;
     all("#student-services-tabs option[value='3'], #view-student-services option[value='3']").forEach(function (option) {
       option.hidden = isLeadership();
@@ -2023,6 +2025,210 @@
     renderStudentDuty();
     renderStudentRecent();
     renderStudentSettings();
+    renderLeadershipPassCompanions();
+  }
+
+  function renderLeadershipPassCompanions() {
+    var list = el("sl-pass-companions");
+    if (!list) return;
+    list.innerHTML = state.leadershipPassCompanions.length ? state.leadershipPassCompanions.map(function (person) {
+      return '<li><strong>' + escapeHtml(lookupPersonName(person)) + '</strong> (' + escapeHtml(lookupRegistration(person)) + ') <button class="button quiet sl-remove-companion" data-registration="' + escapeHtml(lookupRegistration(person)) + '" type="button">Remove</button></li>';
+    }).join("") : '<li class="service-secondary">No additional people.</li>';
+  }
+
+  function addLeadershipPassCompanion() {
+    var person = requireLookup("sl-pass-companion", "student");
+    var registration = lookupRegistration(person);
+    var primaryRegistration = el("sl-pass-primary").dataset.selectedRegistration || "";
+    if (registration === primaryRegistration) throw new Error("The primary student cannot also be an additional person.");
+    if (state.leadershipPassCompanions.some(function (item) { return lookupRegistration(item) === registration; })) throw new Error("That student is already on this pass.");
+    if (state.leadershipPassCompanions.length >= 5) throw new Error("A gate pass can include up to five additional people.");
+    state.leadershipPassCompanions.push(person);
+    el("sl-pass-companion").value = "";
+    clearLookupSelection(el("sl-pass-companion"));
+    renderLeadershipPassCompanions();
+  }
+
+  async function saveLeadershipEmergencyPass(form) {
+    var primary = requireLookup("sl-pass-primary", "student");
+    setBusy(form, true, "Submitting...");
+    try {
+      var result = await rpc("ops_save_emergency_gate_pass", {
+        p_session_token: state.session.session_token,
+        p_pass_id: null,
+        p_primary_registration: lookupRegistration(primary),
+        p_requester_email: value("sl-pass-email"),
+        p_destination: value("sl-pass-destination"),
+        p_reason: value("sl-pass-reason"),
+        p_departure_at: new Date(value("sl-pass-departure")).toISOString(),
+        p_expected_return_at: new Date(value("sl-pass-return")).toISOString(),
+        p_contact_details: value("sl-pass-contact"),
+        p_companions: state.leadershipPassCompanions.map(lookupRegistration)
+      });
+      if (!result || result.status !== "success") throw new Error(result && result.message || "The emergency gate pass could not be saved.");
+      dispatchPassEmail();
+      form.reset();
+      clearLookupSelection(el("sl-pass-primary"));
+      clearLookupSelection(el("sl-pass-companion"));
+      state.leadershipPassCompanions = [];
+      renderLeadershipPassCompanions();
+      await loadStudentServices();
+      renderStudentServices();
+      activateStudentServicesTab("passes");
+      toast("Emergency gate pass submitted for approval.");
+    } finally { setBusy(form, false); }
+  }
+
+  async function loadAdministratorsOfficePasses() {
+    if (!isAdministratorsOfficeWorkspace()) return;
+    var result = await rpc("ops_administrators_office_gate_passes", {
+      p_session_token: state.session.session_token
+    });
+    if (!result || result.status !== "success") throw new Error(result && result.message || "Gate passes could not be loaded.");
+    state.adminOfficePasses = result;
+  }
+
+  function adminOfficePassById(passId) {
+    return ((state.adminOfficePasses && state.adminOfficePasses.passes) || []).find(function (pass) { return pass.id === passId; }) || null;
+  }
+
+  function renderAdministratorsOfficeCompanions() {
+    var list = el("ao-pass-companions");
+    if (!list) return;
+    list.innerHTML = state.adminOfficePassCompanions.length ? state.adminOfficePassCompanions.map(function (person) {
+      return '<li><strong>' + escapeHtml(lookupPersonName(person)) + '</strong> (' + escapeHtml(lookupRegistration(person)) + ') <button class="button quiet ao-remove-companion" data-registration="' + escapeHtml(lookupRegistration(person)) + '" type="button">Remove</button></li>';
+    }).join("") : '<li class="service-secondary">No additional people.</li>';
+  }
+
+  function resetAdministratorsOfficePassForm() {
+    var form = el("ao-pass-form");
+    if (!form) return;
+    form.reset();
+    el("ao-pass-id").value = "";
+    clearLookupSelection(el("ao-pass-primary"));
+    clearLookupSelection(el("ao-pass-companion"));
+    state.adminOfficePassCompanions = [];
+    renderAdministratorsOfficeCompanions();
+    el("ao-pass-form-title").textContent = "Submit a gate pass";
+    el("ao-pass-save").textContent = "Submit gate pass";
+    el("ao-pass-cancel-edit").hidden = true;
+  }
+
+  function addAdministratorsOfficeCompanion() {
+    var person = requireLookup("ao-pass-companion", "student");
+    var registration = lookupRegistration(person);
+    var primaryRegistration = el("ao-pass-primary").dataset.selectedRegistration || "";
+    if (registration === primaryRegistration) throw new Error("The primary student cannot also be an additional person.");
+    if (state.adminOfficePassCompanions.some(function (item) { return lookupRegistration(item) === registration; })) throw new Error("That student is already on this pass.");
+    if (state.adminOfficePassCompanions.length >= 5) throw new Error("A gate pass can include up to five additional people.");
+    state.adminOfficePassCompanions.push(person);
+    el("ao-pass-companion").value = "";
+    clearLookupSelection(el("ao-pass-companion"));
+    renderAdministratorsOfficeCompanions();
+  }
+
+  function administratorsOfficePassDetails(pass) {
+    var people = servicePassPeople(pass);
+    var approvals = (pass.approvals || []).map(function (approval) {
+      return '<div class="approval-review-row"><strong>' + escapeHtml(titleCase(approval.role === "administrator" ? "School Administration" : approval.role)) + '</strong><br><span class="service-secondary">' + escapeHtml(titleCase(approval.decision)) + ' · ' + escapeHtml(formatDateTime(approval.decided_at)) + '</span>' + (approval.comments ? '<br><span class="service-secondary">' + escapeHtml(approval.comments) + '</span>' : '') + '</div>';
+    }).join("") || '<p class="service-secondary">No decisions yet.</p>';
+    return '<p><strong>Applicant:</strong> ' + escapeHtml(pass.student_name) + ' (' + escapeHtml(pass.registration_number) + ')</p>' +
+      '<p><strong>Student email:</strong> ' + escapeHtml(pass.requester_email || "Not recorded") + '</p>' +
+      '<h3>Everyone on this pass</h3><ul class="pass-review-list">' + people.map(function (person) {
+        return '<li><strong>' + escapeHtml(person.student_name) + '</strong> (' + escapeHtml(person.registration_number) + ')' + (person.is_primary ? ' · Applicant' : '') + '</li>';
+      }).join("") + '</ul>' +
+      '<p><strong>Destination:</strong> ' + escapeHtml(pass.destination) + '</p>' +
+      '<p><strong>Reason:</strong> ' + escapeHtml(pass.reason) + '</p>' +
+      '<p><strong>Contact:</strong> ' + escapeHtml(pass.contact_details) + '</p>' +
+      '<p><strong>Departure:</strong> ' + escapeHtml(formatDateTime(pass.departure_at)) + '</p>' +
+      '<p><strong>Expected return:</strong> ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</p>' +
+      '<p><strong>Status:</strong> ' + escapeHtml(titleCase(pass.status)) + (pass.waiting_on ? ' · Waiting on ' + escapeHtml(pass.waiting_on) : '') + '</p>' +
+      '<h3>Approval history</h3>' + approvals;
+  }
+
+  function openAdministratorsOfficePass(passId) {
+    var pass = adminOfficePassById(passId);
+    if (!pass) return toast("Gate pass not found. Refresh and try again.", true);
+    state.adminOfficePassReview = pass;
+    el("ao-pass-details").innerHTML = administratorsOfficePassDetails(pass);
+    el("ao-pass-modal-edit").hidden = !pass.can_edit;
+    el("ao-pass-modal").hidden = false;
+  }
+
+  function closeAdministratorsOfficePass() {
+    state.adminOfficePassReview = null;
+    el("ao-pass-modal").hidden = true;
+  }
+
+  function editAdministratorsOfficePass(passId) {
+    var pass = adminOfficePassById(passId);
+    if (!pass || !pass.can_edit) return toast("This pass can no longer be edited.", true);
+    el("ao-pass-id").value = pass.id;
+    setLookupSelection(el("ao-pass-primary"), {
+      student_id: pass.student_id,
+      student_name: pass.student_name,
+      registration_number: pass.registration_number
+    });
+    el("ao-pass-departure").value = datetimeLocal(pass.departure_at);
+    el("ao-pass-return").value = datetimeLocal(pass.expected_return_at);
+    el("ao-pass-destination").value = pass.destination || "";
+    el("ao-pass-reason").value = pass.reason || "";
+    el("ao-pass-contact").value = pass.contact_details || "";
+    el("ao-pass-email").value = pass.requester_email || "";
+    state.adminOfficePassCompanions = servicePassPeople(pass).filter(function (person) { return !person.is_primary; });
+    renderAdministratorsOfficeCompanions();
+    el("ao-pass-form-title").textContent = "Edit and resubmit gate pass";
+    el("ao-pass-save").textContent = "Save and resubmit";
+    el("ao-pass-cancel-edit").hidden = false;
+    closeAdministratorsOfficePass();
+    el("ao-pass-form").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+
+  function renderAdministratorsOfficePasses() {
+    if (!isAdministratorsOfficeWorkspace() || !state.adminOfficePasses) return;
+    var q = value("ao-pass-search").toLowerCase();
+    var filter = value("ao-pass-filter");
+    var archivedStatuses = ["rejected","cancelled"];
+    var rows = (state.adminOfficePasses.passes || []).filter(function (pass) {
+      var archived = archivedStatuses.indexOf(pass.status) >= 0;
+      if (state.adminOfficeShowPassArchive !== archived) return false;
+      var people = servicePassPeople(pass);
+      var hay = people.map(function (person) { return person.student_name + " " + person.registration_number; }).join(" ") + " " + (pass.destination || "");
+      return (filter === "ALL" || pass.status === filter) && hay.toLowerCase().indexOf(q) >= 0;
+    });
+    el("ao-pass-filter").hidden = state.adminOfficeShowPassArchive;
+    el("ao-pass-archive-toggle").textContent = state.adminOfficeShowPassArchive ? "Back to current passes" : "View rejected and cancelled passes";
+    el("ao-pass-rows").innerHTML = rows.length ? rows.map(function (pass) {
+      return '<tr><td>' + servicePeopleHtml(pass) + '</td><td>' + escapeHtml(pass.destination) + '</td><td><span class="service-pill ' + escapeHtml(pass.status) + '">' + escapeHtml(titleCase(pass.status)) + '</span>' + (pass.waiting_on ? '<br><small class="service-secondary">Waiting on ' + escapeHtml(pass.waiting_on) + '</small>' : '') + '</td><td>' + escapeHtml(formatDateTime(pass.departure_at)) + '<br><small class="service-secondary">Return ' + escapeHtml(formatDateTime(pass.expected_return_at)) + '</small></td><td><button class="button secondary ao-view-pass" data-id="' + escapeHtml(pass.id) + '" type="button">View details</button>' + (pass.can_edit ? ' <button class="button quiet ao-edit-pass" data-id="' + escapeHtml(pass.id) + '" type="button">Edit</button>' : '') + '</td></tr>';
+    }).join("") : '<tr><td colspan="5" class="empty-state">No matching gate passes.</td></tr>';
+  }
+
+  async function saveAdministratorsOfficePass(form) {
+    var primary = requireLookup("ao-pass-primary", "student");
+    var passId = value("ao-pass-id") || null;
+    var current = passId ? adminOfficePassById(passId) : null;
+    if (current && (current.approvals || []).length && !window.confirm("Saving these changes will reset the existing approvals and return the pass to Pending. Continue?")) return;
+    setBusy(form, true, passId ? "Resubmitting..." : "Submitting...");
+    try {
+      var result = await rpc("ops_save_emergency_gate_pass", {
+        p_session_token: state.session.session_token,
+        p_pass_id: passId,
+        p_primary_registration: lookupRegistration(primary),
+        p_requester_email: value("ao-pass-email"),
+        p_destination: value("ao-pass-destination"),
+        p_reason: value("ao-pass-reason"),
+        p_departure_at: new Date(value("ao-pass-departure")).toISOString(),
+        p_expected_return_at: new Date(value("ao-pass-return")).toISOString(),
+        p_contact_details: value("ao-pass-contact"),
+        p_companions: state.adminOfficePassCompanions.map(lookupRegistration)
+      });
+      if (!result || result.status !== "success") throw new Error(result && result.message || "The gate pass could not be saved.");
+      dispatchPassEmail();
+      resetAdministratorsOfficePassForm();
+      await loadAdministratorsOfficePasses();
+      renderAdministratorsOfficePasses();
+      toast(passId ? "Gate pass updated and returned for approval." : "Gate pass submitted for approval.");
+    } finally { setBusy(form, false); }
   }
 
   async function loadAdministratorsOfficePasses() {
@@ -2787,6 +2993,20 @@
       try { await loadStudentServices(); renderStudentServices(); toast("Student services refreshed."); }
       catch (error) { toast(error.message, true); }
       finally { setBusy(this, false); }
+    });
+    el("sl-pass-add-companion").addEventListener("click", function () {
+      try { addLeadershipPassCompanion(); }
+      catch (error) { toast(error.message, true); }
+    });
+    el("sl-pass-companions").addEventListener("click", function (event) {
+      var button = event.target.closest(".sl-remove-companion");
+      if (!button) return;
+      state.leadershipPassCompanions = state.leadershipPassCompanions.filter(function (person) { return lookupRegistration(person) !== button.dataset.registration; });
+      renderLeadershipPassCompanions();
+    });
+    el("sl-emergency-pass-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      saveLeadershipEmergencyPass(event.currentTarget).catch(function (error) { toast(error.message, true); });
     });
     ["ss-campus-search","ss-campus-gender","ss-campus-year","ss-campus-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentCampus); });
     ["ss-accommodation-search","ss-accommodation-gender","ss-accommodation-year","ss-accommodation-campus","ss-accommodation-filter"].forEach(function (id) { el(id).addEventListener(id.indexOf("search") >= 0 ? "input" : "change", renderStudentAccommodation); });
