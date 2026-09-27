@@ -35,6 +35,11 @@ begin
     'destination',gp.destination,
     'reason',gp.reason,
     'contact_details',gp.contact_details,
+    'requester_email',(
+      select c.requester_email
+      from private.pass_requester_contacts c
+      where c.pass_id=gp.id
+    ),
     'departure_at',gp.departure_at,
     'expected_return_at',gp.expected_return_at,
     'status',gp.status,
@@ -83,10 +88,11 @@ begin
 end;
 $function$;
 
-create or replace function public.ops_administrators_office_save_gate_pass(
+create or replace function public.ops_save_emergency_gate_pass(
   p_session_token text,
   p_pass_id uuid,
   p_primary_registration text,
+  p_requester_email text,
   p_destination text,
   p_reason text,
   p_departure_at timestamptz,
@@ -114,6 +120,8 @@ declare
   v_people jsonb;
   v_queued integer := 0;
   v_previous_approvals jsonb := '[]'::jsonb;
+  v_actor_label text;
+  v_history_role text;
 begin
   select * into v_context from private.ops_session_context(p_session_token);
 
@@ -121,8 +129,20 @@ begin
   from public.ops_departments
   where id=v_context.actor_department_id;
 
-  if v_context.actor_role<>'department' or v_department_slug<>'administrators-office' then
-    raise exception 'Administrator''s Office access is required.' using errcode='42501';
+  if v_context.actor_role='student_leadership' then
+    v_actor_label:='Senior Student Leadership';
+    v_history_role:='student_leadership';
+  elsif v_context.actor_role='department' and v_department_slug='administrators-office' then
+    v_actor_label:='Administrator''s Office';
+    v_history_role:='administrator';
+  else
+    raise exception 'Senior Student Leadership or Administrator''s Office access is required.' using errcode='42501';
+  end if;
+
+  p_requester_email:=lower(trim(coalesce(p_requester_email,'')));
+  if length(p_requester_email)>254
+     or p_requester_email!~*'^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$' then
+    return jsonb_build_object('status','invalid','message','Enter a valid student email address.');
   end if;
 
   if p_companions is null then p_companions:='[]'::jsonb; end if;
@@ -272,23 +292,33 @@ begin
     on conflict(pass_id,student_id) do nothing;
   end if;
 
+  insert into private.pass_requester_contacts(pass_id,requester_email)
+  values(v_pass.id,p_requester_email)
+  on conflict(pass_id) do update
+  set requester_email=excluded.requester_email;
+
   insert into public.gate_pass_status_history(pass_id,previous_status,new_status,actor_role,notes)
   values(
-    v_pass.id,v_old_status,'pending','administrator',
+    v_pass.id,v_old_status,'pending',v_history_role,
     case when p_pass_id is null
-      then 'Submitted by Administrator''s Office. Student submission deadline bypassed.'
-      else 'Edited and resubmitted by Administrator''s Office. Previous approvals were reset.'
+      then 'Submitted by '||v_actor_label||'. Student submission deadline bypassed.'
+      else 'Edited and resubmitted by '||v_actor_label||'. Previous approvals were reset.'
     end
   );
 
   insert into public.audit_log(event_type,entity_type,entity_id,actor_role,action,details)
   values(
     'gate_pass','gate_pass',v_pass.id::text,'department',
-    case when p_pass_id is null then 'administrators_office_submitted' else 'administrators_office_edited' end,
+    case
+      when v_context.actor_role='student_leadership' then 'student_leadership_emergency_submitted'
+      when p_pass_id is null then 'administrators_office_submitted'
+      else 'administrators_office_edited'
+    end,
     jsonb_build_object(
       'department_id',v_context.actor_department_id,
       'student_id',v_primary.id,
       'registration_number',v_primary.registration_number,
+      'requester_email',p_requester_email,
       'companion_count',v_companion_count,
       'deadline_bypassed',true,
       'previous_status',v_old_status,
@@ -312,6 +342,14 @@ end;
 $function$;
 
 revoke all on function public.ops_administrators_office_gate_passes(text) from public;
-revoke all on function public.ops_administrators_office_save_gate_pass(text,uuid,text,text,text,timestamptz,timestamptz,text,jsonb) from public;
+revoke all on function public.ops_save_emergency_gate_pass(text,uuid,text,text,text,text,timestamptz,timestamptz,text,jsonb) from public;
 grant execute on function public.ops_administrators_office_gate_passes(text) to anon,authenticated;
-grant execute on function public.ops_administrators_office_save_gate_pass(text,uuid,text,text,text,timestamptz,timestamptz,text,jsonb) to anon,authenticated;
+grant execute on function public.ops_save_emergency_gate_pass(text,uuid,text,text,text,text,timestamptz,timestamptz,text,jsonb) to anon,authenticated;
+
+do $migration$
+begin
+  if to_regprocedure('public.ops_administrators_office_save_gate_pass(text,uuid,text,text,text,timestamptz,timestamptz,text,jsonb)') is not null then
+    execute 'revoke all on function public.ops_administrators_office_save_gate_pass(text,uuid,text,text,text,timestamptz,timestamptz,text,jsonb) from anon,authenticated,public';
+  end if;
+end
+$migration$;
