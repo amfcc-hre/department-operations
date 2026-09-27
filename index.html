@@ -120,6 +120,13 @@
         <strong>Meal collection is disabled during Conference Mode.</strong>
         <span>Students and staff cannot create meal collections until Conference Mode is turned off.</span>
       </div>
+      <form id="kitchen-meal-controls" class="panel form-grid">
+        <div class="span-2"><h3>Meal availability</h3><p class="muted">These switches control Student Services and Kitchen collection tools across the system.</p></div>
+        <label><span><strong>Meal check-in</strong></span><input id="kitchen-checkin-enabled" type="checkbox"></label>
+        <label><span><strong>Meal collection</strong></span><input id="kitchen-collection-enabled" type="checkbox"></label>
+        <label class="span-2">Changed by<input id="kitchen-meal-actor" autocomplete="name" placeholder="Enter your name" required></label>
+        <div class="span-2"><button class="button primary" type="submit">Save meal availability</button></div>
+      </form>
       <section class="meal-count-section">
         <div class="panel-heading"><div><h3>Students checked in ahead</h3><p>Preparation counts for Breakfast, Lunch and Break-fast 4pm. Supper is cooked for everyone.</p></div><span id="kitchen-checkin-mode" class="status-pill green">School Term</span></div>
         <div id="kitchen-checkin-counts" class="summary-grid compact"></div>
@@ -919,6 +926,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=22"></script>
+  <script src="operations.js?v=23"></script>
 </body>
 </html>

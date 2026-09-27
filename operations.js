@@ -167,6 +167,8 @@
   function isLeadership() { return state.session && state.session.role === "student_leadership"; }
   function isManagement() { return state.session && ["management", "administrator"].indexOf(state.session.role) >= 0; }
   function isConference() { return !!(state.mode && state.mode.conference_mode); }
+  function mealCheckInEnabled() { return !!(state.mode && state.mode.meal_check_in_enabled); }
+  function mealCollectionEnabled() { return !!(state.mode && state.mode.meal_collection_enabled); }
   function isKitchenWorkspace() { return isDepartment() && currentDepartmentSlug() === "kitchen"; }
   function isClinicWorkspace() { return isDepartment() && currentDepartmentSlug() === "clinic"; }
   function isSecurityWorkspace() { return isDepartment() && currentDepartmentSlug() === "security"; }
@@ -624,7 +626,7 @@
   }
 
   function applyOperatingModeVisibility() {
-    var conference = isConference();
+    var conference = isConference(), collectionClosed = !mealCollectionEnabled();
     ["requests","planner","assignments"].forEach(function (view) {
       var button = document.querySelector('#main-nav button[data-view="' + view + '"]');
       if (button) {
@@ -644,16 +646,16 @@
     var kitchenNotice = el("kitchen-conference-notice");
     var kitchenScannerLink = el("kitchen-scanner-link");
     if (kitchenForm) {
-      all("input,select,button",kitchenForm).forEach(function (control) { control.disabled = conference; });
+      all("input,select,button",kitchenForm).forEach(function (control) { control.disabled = conference || collectionClosed; });
     }
-    if (kitchenNotice) kitchenNotice.hidden = !conference;
-    if (kitchenScannerLink) kitchenScannerLink.hidden = conference;
-    if (conference && el("kitchen-scanner-state")) {
+    if (kitchenNotice) { kitchenNotice.hidden = !conference && !collectionClosed; kitchenNotice.querySelector("strong").textContent = conference ? "Meal collection is disabled during Conference Mode." : "Meal collection is turned off."; kitchenNotice.querySelector("span").textContent = conference ? "Students and staff cannot create meal collections until Conference Mode is turned off." : "Use the meal availability switches to open collection when Kitchen is ready."; }
+    if (kitchenScannerLink) kitchenScannerLink.hidden = conference || collectionClosed;
+    if ((conference || collectionClosed) && el("kitchen-scanner-state")) {
       el("kitchen-scanner-state").className = "status-pill red";
-      el("kitchen-scanner-state").textContent = "Conference Mode";
+      el("kitchen-scanner-state").textContent = conference ? "Conference Mode" : "Collection off";
       el("kitchen-scan-result").className = "scan-result error";
-      el("kitchen-scan-result").innerHTML = "<strong>Meal collection disabled</strong><span>Conference Mode is on.</span>";
-    } else if (!conference && el("kitchen-scanner-state")) {
+      el("kitchen-scan-result").innerHTML = "<strong>Meal collection disabled</strong><span>" + (conference ? "Conference Mode is on." : "Kitchen has turned collection off.") + "</span>";
+    } else if (!conference && !collectionClosed && el("kitchen-scanner-state")) {
       el("kitchen-scanner-state").className = "status-pill green";
       el("kitchen-scanner-state").textContent = "Ready to scan";
       el("kitchen-scan-result").className = "scan-result neutral";
@@ -1667,7 +1669,7 @@
 
   function focusKitchenScanner() {
     var field = el("kitchen-registration");
-    if (!field || isConference() || !el("view-meal-service").classList.contains("active")) return;
+    if (!field || isConference() || !mealCollectionEnabled() || !el("view-meal-service").classList.contains("active")) return;
     setTimeout(function () { if (el("view-meal-service").classList.contains("active")) field.focus(); }, 80);
   }
 
@@ -1706,8 +1708,8 @@
   }
 
   async function checkInKitchen(source, busyTarget) {
-    if (isConference()) {
-      renderKitchenResult({ status:"conference_disabled", message:"Meal collection is unavailable while Conference Mode is on." }, "");
+    if (isConference() || !mealCollectionEnabled()) {
+      renderKitchenResult({ status:"feature_disabled", message:isConference()?"Meal collection is unavailable while Conference Mode is on.":"Meal collection is turned off." }, "");
       return;
     }
     var scanned = value("kitchen-registration");
@@ -1745,8 +1747,10 @@
     var meals = ["Breakfast","Lunch","Break-fast 4pm","Supper"];
     var checkinMeals = ["Breakfast","Lunch","Break-fast 4pm"];
     el("kitchen-checkin-counts").innerHTML = checkinMeals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' check-ins</div><div class="value">' + Number((checkins.counts || {})[meal] || 0) + '</div></article>'; }).join("");
-    el("kitchen-checkin-mode").className = "status-pill " + (checkins.check_in_enabled ? "green" : "amber");
-    el("kitchen-checkin-mode").textContent = checkins.conference_mode ? "Conference: not needed" : checkins.holiday_mode ? "Holiday: not needed" : "School Term";
+    el("kitchen-checkin-enabled").checked = !!state.mode.meal_check_in_switch;
+    el("kitchen-collection-enabled").checked = !!state.mode.meal_collection_switch;
+    el("kitchen-checkin-mode").className = "status-pill " + (mealCheckInEnabled() ? "green" : "amber");
+    el("kitchen-checkin-mode").textContent = !state.mode.meal_check_in_switch ? "Check-in off" : state.mode.conference_mode ? "Conference: not needed" : state.mode.holiday_mode ? "Holiday: not needed" : "School Term";
     el("kitchen-counts").innerHTML = meals.map(function (meal) { return '<article class="summary-card"><div class="label">' + escapeHtml(meal) + ' portions</div><div class="value">' + Number((result.counts || {})[meal] || 0) + '</div></article>'; }).join("");
     var recent = result.recent || [];
     el("kitchen-recent").classList.toggle("empty-state", !recent.length);
@@ -1755,6 +1759,22 @@
       var roleText = checkin.recipient_role === "additional" ? " · Additional student" : "";
       return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(checkin.full_name) + '</h3><p>' + escapeHtml(checkin.registration_number + " · " + checkin.meal_session + roleText + childText) + '</p></div><span class="status-pill green">' + escapeHtml(formatDateTime(checkin.checked_in_at)) + '</span></div></article>';
     }).join("") : "No collections recorded yet.";
+  }
+
+  async function saveKitchenMealControls(form) {
+    setBusy(form,true,"Saving...");
+    try {
+      var actor=value("kitchen-meal-actor");
+      if (!actor) throw new Error("Enter your name for the audit record.");
+      var result=await rpc("ops_kitchen_set_meal_features",{p_session_token:state.session.session_token,p_check_in_enabled:el("kitchen-checkin-enabled").checked,p_collection_enabled:el("kitchen-collection-enabled").checked,p_actor_name:actor});
+      if (!result || result.status!=="success") throw new Error(result && result.message || "Meal availability could not be saved.");
+      localStorage.setItem("amfcc_kitchen_meal_actor",actor);
+      state.mode=await rpc("system_mode_status");
+      applyOperatingModeVisibility();
+      await refreshKitchen();
+      toast("Meal availability saved.");
+    } catch (error) { toast(error.message,true); }
+    finally { setBusy(form,false); }
   }
 
   async function refreshClinic() {
@@ -3494,6 +3514,8 @@
     el("kitchen-checkin-form").addEventListener("submit", function (event) {
       event.preventDefault(); checkInKitchen(kitchenInputSource(), event.currentTarget);
     });
+    el("kitchen-meal-actor").value=localStorage.getItem("amfcc_kitchen_meal_actor")||"";
+    el("kitchen-meal-controls").addEventListener("submit",function(event){event.preventDefault();saveKitchenMealControls(event.currentTarget);});
     el("kitchen-registration").addEventListener("keydown", function (event) {
       var now = Date.now();
       if (event.key === "Enter") { event.preventDefault(); checkInKitchen(kitchenInputSource(), el("kitchen-checkin-form")); return; }

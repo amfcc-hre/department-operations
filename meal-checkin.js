@@ -46,10 +46,11 @@
       if (!conferenceClosed && !el("kiosk-workspace").hidden) el("scan-input").focus();
     },80);
   }
-  function setConferenceState(isClosed) {
+  function setConferenceState(isClosed, message) {
     conferenceClosed = !!isClosed;
     el("kiosk-conference").hidden = !conferenceClosed;
     el("kiosk-workspace").hidden = conferenceClosed;
+    if (message) el("kiosk-conference").querySelector("p").textContent = message;
   }
   function showResult(result, registration) {
     var box = el("scan-result");
@@ -62,8 +63,8 @@
       box.className = "kiosk-result warning";
       box.innerHTML = "<strong>ALREADY COLLECTED</strong><span>" + escapeHtml(name + " · " + meal) + "</span>";
       if (navigator.vibrate) navigator.vibrate([60,50,60]);
-    } else if (result.status === "conference_disabled") {
-      setConferenceState(true);
+    } else if (result.status === "conference_disabled" || result.status === "feature_disabled") {
+      setConferenceState(true,result.message);
     } else {
       box.className = "kiosk-result error";
       box.innerHTML = "<strong>NOT SAVED</strong><span>" + escapeHtml(result.message || "Card not recognised.") + "</span>";
@@ -83,11 +84,13 @@
     return response.data;
   }
   async function refreshTotal() {
-    var result = await rpc("dashboard", { service_date:today() });
+    var responses = await Promise.all([rpc("dashboard", { service_date:today() }),client.rpc("system_mode_status")]);
+    var result=responses[0], modeResponse=responses[1], mode=modeResponse.data;
     if (!result || result.status !== "success") {
       throw new Error(result && result.message || "Today's count could not be loaded.");
     }
-    setConferenceState(result.collection_enabled === false || result.conference_mode === true);
+    if (modeResponse.error || !mode || mode.status!=="success") throw modeResponse.error || new Error("Meal availability could not be confirmed.");
+    setConferenceState(!mode.meal_collection_enabled,mode.conference_mode?"Conference Mode is on. Students and staff cannot create meal collections until it is turned off.":"Meal collection is turned off. Return to Kitchen Operations to open it.");
     if (conferenceClosed) return;
     el("today-total").textContent = Number((result.counts || {})[meal] || 0);
   }
@@ -114,7 +117,7 @@
       }
       if (!conferenceClosed) await refreshTotal();
     } catch (error) {
-      if (/Conference Mode/i.test(error.message || "")) setConferenceState(true);
+      if (/Conference Mode|turned off/i.test(error.message || "")) setConferenceState(true,error.message);
       else showResult({ status:"error", message:error.message },registration);
     } finally {
       el("scan-submit").disabled = false;
