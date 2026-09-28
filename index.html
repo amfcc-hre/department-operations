@@ -311,7 +311,8 @@
         <div class="panel-heading"><div><p class="eyebrow">Student Leadership only</p><h3>Bell, kitchen and toilet duty</h3><p>Kitchen is always responsible for kitchen duty and Toilets is always responsible for toilet duty. Each list allows up to two men and two women, and you can save a partially completed week.</p></div></div>
         <form id="service-duty-form" class="form-grid">
           <label>Week beginning Monday<input id="service-duty-week" type="date" required></label>
-          <label>Bell ringer (optional)<input id="service-duty-bell" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
+          <label>First bell ringer<input id="service-duty-bell" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
+          <label>Second bell ringer<input id="service-duty-bell-2" list="student-name-options" data-lookup="student" placeholder="Search and select the exact student"></label>
 
           <fieldset class="duty-assignment-fieldset span-2">
             <legend>Kitchen duty</legend>
@@ -926,6 +927,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=23"></script>
+  <script src="operations.js?v=24"></script>
 </body>
 </html>

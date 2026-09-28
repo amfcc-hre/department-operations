@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v23-meal-controls';
+const CACHE='amfcc-department-operations-v24-two-bell-ringers';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',

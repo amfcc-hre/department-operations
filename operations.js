@@ -961,7 +961,9 @@
     }
     var week = dutyWeek(normalized);
     el("service-duty-week").value = normalized;
-    el("service-duty-bell").value = week.bell_ringer || "";
+    var bellRingers = week.bell_ringers || [];
+    el("service-duty-bell").value = bellRingers[0] ? bellRingers[0].full_name : "";
+    el("service-duty-bell-2").value = bellRingers[1] ? bellRingers[1].full_name : "";
     state.serviceDutyDraft = {
       week_start: normalized,
       kitchen_people: (week.kitchen_people || []).map(function (person) {
@@ -3271,14 +3273,17 @@
         validateDutyLimit("kitchen");
         validateDutyLimit("toilet");
         var bell = value("service-duty-bell") ? requireLookup("service-duty-bell", "student") : null;
+        var bell2 = value("service-duty-bell-2") ? requireLookup("service-duty-bell-2", "student") : null;
+        if (bell && bell2 && String(bell.id || bell.student_id) === String(bell2.id || bell2.student_id)) throw new Error("Choose two different bell ringers.");
         var actor = value("service-duty-actor") ? requireLookup("service-duty-actor", "leadership") : null;
         var kitchenDepartment = departmentBySlug("kitchen");
         var toiletDepartment = departmentBySlug("toilets");
         if (!kitchenDepartment || !toiletDepartment) throw new Error("Kitchen or Toilets is missing from the department setup.");
-        var result = await rpc("ops_save_service_duties", {
+        var result = await rpc("ops_save_service_duties_pair", {
           p_session_token: state.session.session_token,
           p_week_start: value("service-duty-week"),
           p_bell_student_id: bell ? bell.id || bell.student_id : null,
+          p_bell_student_2_id: bell2 ? bell2.id || bell2.student_id : null,
           p_kitchen_department_id: kitchenDepartment.id,
           p_toilet_department_id: toiletDepartment.id,
           p_kitchen_students: state.serviceDutyDraft.kitchen_people.map(function (person) { return person.student_id; }),
