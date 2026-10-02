@@ -2382,7 +2382,7 @@
     if (current && (current.approvals || []).length && !window.confirm("Saving these changes will reset the existing approvals and return the pass to Pending. Continue?")) return;
     setBusy(form, true, passId ? "Resubmitting..." : "Submitting...");
     try {
-      var result = await rpc("ops_administrators_office_save_gate_pass", {
+      var result = await rpc("var result = await rpc("ops_save_emergency_gate_pass", {", {
         p_session_token: state.session.session_token,
         p_pass_id: passId,
         p_primary_registration: lookupRegistration(primary),
