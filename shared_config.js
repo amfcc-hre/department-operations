@@ -12,11 +12,14 @@ window.APP_CONFIG = {
         node &&
         node.nodeType === 1 &&
         node.id === "view-enrolment" &&
- !node.querySelector("#enrolment-refresh")
+        !node.querySelector("#enrolment-refresh")
       ) {
         var raw = node.textContent || "";
+        var open = String.fromCharCode(60);
+        var close = String.fromCharCode(62);
+        var marker = open + 'div class="view-heading"' + close;
         if (
-          raw.indexOf('&lt;div class="view-heading"&gt;') !== -1 &&
+          raw.indexOf(marker) !== -1 &&
           raw.indexOf('id="enrolment-rows"') !== -1
         ) {
           node.innerHTML = raw;
@@ -41,7 +44,7 @@ window.APP_CONFIG = {
   };
 
   var script = document.createElement("script");
-  script.src = "enrolment_tracking.js?v=2";
+  script.src = "enrolment_tracking.js?v=3";
   script.async = false;
   document.head.appendChild(script);
 })();
