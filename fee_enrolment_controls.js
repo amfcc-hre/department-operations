@@ -66,7 +66,11 @@
     var style = document.createElement("style");
     style.id = "fee-enrolment-style";
     style.textContent =
-      ".fee-enrolment-panel{margin-top:18px}" +
+      ".enrolment-subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px;padding-bottom:10px;border-bottom:1px solid #d9e2dd}" +
+      ".enrolment-subtab{border:1px solid #bdd0c6;background:#eef5f1;color:#174c38;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}" +
+      ".enrolment-subtab.active{background:#1f6548;color:#fff;border-color:#1f6548}" +
+      ".enrolment-subpane[hidden]{display:none!important}" +
+      ".fee-enrolment-panel{margin-top:0}" +
       ".fee-enrolment-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}" +
       ".fee-enrolment-toolbar input[type=search]{min-width:220px;flex:1 1 280px}" +
       ".fee-select-all{display:flex;align-items:center;gap:7px;font-weight:700}" +
@@ -358,6 +362,89 @@
     }
   }
 
+  function selectSubtab(name) {
+    var progressPane = document.getElementById("enrolment-progress-pane");
+    var feesPane = document.getElementById("enrolment-fees-pane");
+    var buttons = document.querySelectorAll("#enrolment-subtabs .enrolment-subtab");
+
+    if (!progressPane || !feesPane) return;
+
+    progressPane.hidden = name !== "progress";
+    feesPane.hidden = name !== "fees";
+
+    Array.prototype.forEach.call(buttons, function (button) {
+      var active = button.dataset.enrolmentSubtab === name;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+    });
+
+    if (name === "fees") load();
+  }
+
+  function ensureSubtabs(view) {
+    var existing = document.getElementById("enrolment-subtabs");
+    if (existing) return {
+      progressPane: document.getElementById("enrolment-progress-pane"),
+      feesPane: document.getElementById("enrolment-fees-pane")
+    };
+
+    var heading = view.querySelector(".view-heading");
+    if (!heading) return null;
+
+    var headingTitle = heading.querySelector("h2");
+    if (headingTitle) headingTitle.textContent = "Term enrolment";
+
+    var headingCopy = heading.querySelector(".muted");
+    if (headingCopy) headingCopy.textContent = "Manage registration progress and student fees in one place.";
+
+    var tabs = node("div", "enrolment-subtabs");
+    tabs.id = "enrolment-subtabs";
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Term enrolment sections");
+
+    var progressButton = node("button", "enrolment-subtab active", "Registration Progress");
+    progressButton.type = "button";
+    progressButton.dataset.enrolmentSubtab = "progress";
+    progressButton.setAttribute("role", "tab");
+    progressButton.setAttribute("aria-selected", "true");
+
+    var feesButton = node("button", "enrolment-subtab", "Fees");
+    feesButton.type = "button";
+    feesButton.dataset.enrolmentSubtab = "fees";
+    feesButton.setAttribute("role", "tab");
+    feesButton.setAttribute("aria-selected", "false");
+    feesButton.tabIndex = -1;
+
+    tabs.appendChild(progressButton);
+    tabs.appendChild(feesButton);
+
+    var progressPane = node("div", "enrolment-subpane");
+    progressPane.id = "enrolment-progress-pane";
+    progressPane.setAttribute("role", "tabpanel");
+
+    var feesPane = node("div", "enrolment-subpane");
+    feesPane.id = "enrolment-fees-pane";
+    feesPane.setAttribute("role", "tabpanel");
+    feesPane.hidden = true;
+
+    var child = heading.nextSibling;
+    while (child) {
+      var next = child.nextSibling;
+      progressPane.appendChild(child);
+      child = next;
+    }
+
+    view.appendChild(tabs);
+    view.appendChild(progressPane);
+    view.appendChild(feesPane);
+
+    progressButton.addEventListener("click", function () { selectSubtab("progress"); });
+    feesButton.addEventListener("click", function () { selectSubtab("fees"); });
+
+    return { progressPane: progressPane, feesPane: feesPane };
+  }
+
   function mount() {
     if (!allowed()) return;
 
@@ -369,6 +456,12 @@
 
     addStyles();
     ensureDialog();
+
+    var panes = ensureSubtabs(view);
+    if (!panes || !panes.feesPane) {
+      mounted = false;
+      return;
+    }
 
     var panel = node("article", "panel fee-enrolment-panel");
     panel.id = "fee-enrolment-panel";
@@ -444,8 +537,8 @@
     wrap.appendChild(table);
     panel.appendChild(wrap);
 
-    view.appendChild(panel);
-    load();
+    panes.feesPane.appendChild(panel);
+    selectSubtab("progress");
   }
 
   function start() {
