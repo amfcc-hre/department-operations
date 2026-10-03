@@ -7,7 +7,7 @@
 
   function esc(value) {
     return String(value == null ? "" : value)
-      .replace(/&/g, "&amp;").replace(/&lt;/g, "&amp;lt;").replace(/&gt;/g, "&amp;gt;")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
@@ -66,34 +66,34 @@
       section.className = "view";
       section.setAttribute("aria-labelledby", "enrolment-heading");
       section.innerHTML =
-        '&lt;div class="view-heading"&gt;' +
-          '&lt;div&gt;&lt;p class="eyebrow"&gt;Term enrolment&lt;/p&gt;&lt;h2 id="enrolment-heading"&gt;Registration progress&lt;/h2&gt;' +
-          '&lt;p class="muted"&gt;Track every student through the term registration workflow. This view is read-only.&lt;/p&gt;&lt;/div&gt;' +
-          '&lt;button id="enrolment-refresh" class="button secondary" type="button"&gt;Refresh enrolment&lt;/button&gt;' +
-        '&lt;/div&gt;' +
-        '&lt;div id="enrolment-summary" class="summary-grid"&gt;&lt;/div&gt;' +
-        '&lt;article class="panel"&gt;' +
-          '&lt;div class="panel-heading"&gt;&lt;div&gt;&lt;h3&gt;Student registration status&lt;/h3&gt;&lt;p&gt;Filter by term, status, current stage or class year.&lt;/p&gt;&lt;/div&gt;&lt;span id="enrolment-count" class="count-badge"&gt;0&lt;/span&gt;&lt;/div&gt;' +
-          '&lt;div class="service-toolbar"&gt;' +
-            '&lt;select id="enrolment-term" aria-label="Academic term"&gt;&lt;/select&gt;' +
-            '&lt;input id="enrolment-search" type="search" placeholder="Search student or registration number"&gt;' +
-            '&lt;select id="enrolment-status" aria-label="Registration status"&gt;' +
-              '&lt;option value="ALL"&gt;All statuses&lt;/option&gt;&lt;option value="not_started"&gt;Not started&lt;/option&gt;&lt;option value="started"&gt;Started&lt;/option&gt;' +
-              '&lt;option value="returned"&gt;Returned to student&lt;/option&gt;&lt;option value="student_submitted"&gt;Student submitted&lt;/option&gt;' +
-              '&lt;option value="waiting_accommodation"&gt;Waiting accommodation&lt;/option&gt;&lt;option value="ready_final"&gt;Ready for final&lt;/option&gt;&lt;option value="completed"&gt;Completed&lt;/option&gt;' +
-            '&lt;/select&gt;' +
-            '&lt;select id="enrolment-stage" aria-label="Current registration stage"&gt;' +
-              '&lt;option value="ALL"&gt;All stages&lt;/option&gt;&lt;option value="student_not_started"&gt;Student not started&lt;/option&gt;' +
-              '&lt;option value="student_form"&gt;Student completing form&lt;/option&gt;&lt;option value="returned_to_student"&gt;Returned to student&lt;/option&gt;' +
-              '&lt;option value="administrators_office"&gt;Administrator\'s Office review&lt;/option&gt;&lt;option value="fees"&gt;Fees review&lt;/option&gt;' +
-              '&lt;option value="accommodation"&gt;Accommodation&lt;/option&gt;&lt;option value="final_administration"&gt;Final administration&lt;/option&gt;&lt;option value="completed"&gt;Completed&lt;/option&gt;' +
-            '&lt;/select&gt;' +
-            '&lt;select id="enrolment-year" aria-label="Class year"&gt;&lt;option value="ALL"&gt;All classes&lt;/option&gt;&lt;option value="1"&gt;1st Year&lt;/option&gt;&lt;option value="2"&gt;2nd Year&lt;/option&gt;&lt;option value="3"&gt;3rd Year&lt;/option&gt;&lt;/select&gt;' +
-          '&lt;/div&gt;' +
-          '&lt;div class="table-wrap"&gt;&lt;table class="service-table"&gt;&lt;thead&gt;&lt;tr&gt;' +
-            '&lt;th&gt;Student&lt;/th&gt;&lt;th&gt;Registration&lt;/th&gt;&lt;th&gt;Class&lt;/th&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Current stage&lt;/th&gt;&lt;th&gt;Stage progress&lt;/th&gt;&lt;th&gt;Last updated&lt;/th&gt;' +
-          '&lt;/tr&gt;&lt;/thead&gt;&lt;tbody id="enrolment-rows"&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;' +
-        '&lt;/article&gt;';
+        '<div class="view-heading">' +
+          '<div><p class="eyebrow">Term enrolment</p><h2 id="enrolment-heading">Registration progress</h2>' +
+          '<p class="muted">Track and manage every student through the term registration workflow.</p></div>' +
+          '<button id="enrolment-refresh" class="button secondary" type="button">Refresh enrolment</button>' +
+        '</div>' +
+        '<div id="enrolment-summary" class="summary-grid"></div>' +
+        '<article class="panel">' +
+          '<div class="panel-heading"><div><h3>Student registration status</h3><p>Filter by term, status, current stage or class year.</p></div><span id="enrolment-count" class="count-badge">0</span></div>' +
+          '<div class="service-toolbar">' +
+            '<select id="enrolment-term" aria-label="Academic term"></select>' +
+            '<input id="enrolment-search" type="search" placeholder="Search student or registration number">' +
+            '<select id="enrolment-status" aria-label="Registration status">' +
+              '<option value="ALL">All statuses</option><option value="not_started">Not started</option><option value="started">Started</option>' +
+              '<option value="returned">Returned to student</option><option value="student_submitted">Student submitted</option>' +
+              '<option value="waiting_accommodation">Waiting accommodation</option><option value="ready_final">Ready for final</option><option value="completed">Completed</option>' +
+            '</select>' +
+            '<select id="enrolment-stage" aria-label="Current registration stage">' +
+              '<option value="ALL">All stages</option><option value="student_not_started">Student not started</option>' +
+              '<option value="student_form">Student completing form</option><option value="returned_to_student">Returned to student</option>' +
+              '<option value="administrators_office">Administrator\'s Office review</option><option value="fees">Fees review</option>' +
+              '<option value="accommodation">Accommodation</option><option value="final_administration">Final administration</option><option value="completed">Completed</option>' +
+            '</select>' +
+            '<select id="enrolment-year" aria-label="Class year"><option value="ALL">All classes</option><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option></select>' +
+          '</div>' +
+          '<div class="table-wrap"><table class="service-table"><thead><tr>' +
+            '<th>Student</th><th>Registration</th><th>Class</th><th>Status</th><th>Current stage</th><th>Stage progress</th><th>Last updated</th>' +
+          '</tr></thead><tbody id="enrolment-rows"></tbody></table></div>' +
+        '</article>';
 
       var studentServices = document.getElementById("view-student-services");
       if (studentServices) shell.insertBefore(section, studentServices);
@@ -158,7 +158,7 @@
     if (termSelect) {
       termSelect.innerHTML = terms.map(function (term) {
         var label = term.term_name + (term.registration_is_open ? " · Open" : "");
-        return '&lt;option value="' + esc(term.id) + '"&gt;' + esc(label) + '&lt;/option&gt;';
+        return '<option value="' + esc(term.id) + '">' + esc(label) + '</option>';
       }).join("");
       termSelect.value = String(selected.id || "");
     }
@@ -175,7 +175,7 @@
       ["Completed", summary.completed || 0]
     ];
     document.getElementById("enrolment-summary").innerHTML = cards.map(function (card) {
-      return '&lt;div class="summary-card"&gt;&lt;strong&gt;' + esc(card[1]) + '&lt;/strong&gt;&lt;span&gt;' + esc(card[0]) + '&lt;/span&gt;&lt;/div&gt;';
+      return '<div class="summary-card"><strong>' + esc(card[1]) + '</strong><span>' + esc(card[0]) + '</span></div>';
     }).join("");
 
     var search = String(document.getElementById("enrolment-search").value || "").toLowerCase();
@@ -193,16 +193,16 @@
 
     document.getElementById("enrolment-count").textContent = rows.length + " of " + allRows.length;
     document.getElementById("enrolment-rows").innerHTML = rows.map(function (row) {
-      return '&lt;tr&gt;' +
-        '&lt;td&gt;&lt;strong&gt;' + esc(row.student_name) + '&lt;/strong&gt;&lt;/td&gt;' +
-        '&lt;td&gt;' + esc(row.registration_number) + '&lt;/td&gt;' +
-        '&lt;td&gt;' + esc(row.class_year ? row.class_year + (row.class_year === 1 ? "st" : row.class_year === 2 ? "nd" : "rd") + " Year" : "—") + '&lt;/td&gt;' +
-        '&lt;td&gt;&lt;span class="status-pill ' + statusClass(row) + '"&gt;' + esc(row.status_label || row.status) + '&lt;/span&gt;&lt;/td&gt;' +
-        '&lt;td&gt;&lt;strong&gt;' + esc(row.stage_label || "—") + '&lt;/strong&gt;&lt;/td&gt;' +
-        '&lt;td&gt;&lt;span class="service-secondary"&gt;' + esc(progressText(row)) + '&lt;/span&gt;&lt;/td&gt;' +
-        '&lt;td&gt;' + esc(formatDateTime(row.updated_at || row.completed_at || row.student_submitted_at || row.student_started_at)) + '&lt;/td&gt;' +
-      '&lt;/tr&gt;';
-    }).join("") || '&lt;tr&gt;&lt;td colspan="7" class="empty-state"&gt;No registrations match these filters.&lt;/td&gt;&lt;/tr&gt;';
+      return '<tr>' +
+        '<td><strong>' + esc(row.student_name) + '</strong></td>' +
+        '<td>' + esc(row.registration_number) + '</td>' +
+        '<td>' + esc(row.class_year ? row.class_year + (row.class_year === 1 ? "st" : row.class_year === 2 ? "nd" : "rd") + " Year" : "—") + '</td>' +
+        '<td><span class="status-pill ' + statusClass(row) + '">' + esc(row.status_label || row.status) + '</span></td>' +
+        '<td><strong>' + esc(row.stage_label || "—") + '</strong></td>' +
+        '<td><span class="service-secondary">' + esc(progressText(row)) + '</span></td>' +
+        '<td>' + esc(formatDateTime(row.updated_at || row.completed_at || row.student_submitted_at || row.student_started_at)) + '</td>' +
+      '</tr>';
+    }).join("") || '<tr><td colspan="7" class="empty-state">No registrations match these filters.</td></tr>';
   }
 
   function bindEvents() {
