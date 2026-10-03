@@ -169,9 +169,17 @@ Student Leadership cannot see confidential Clinic notes.
 
 ## IT Department Operations
 
-The IT Department workspace includes the normal IT service desk, planning, stock and activity records plus two protected external-system launchers:
+The IT Department workspace includes the service desk, planning, activity records and a built-in Asset register tab.
 
-- [AssetTiger](https://www.assettiger.com/) for the authoritative school asset register.
+The register preserves the spreadsheet fields: Description, Asset Tag ID, Quantity, Status, Site, Location, Brand, Category, Model and Serial No. It adds an editable minimum-stock level. Search covers every field, and filters cover category, site, location, status and stock level. The dashboard shows entry and unit counts, low-stock and out-of-stock entries, and category and site totals.
+
+IT users can type a quantity or use the up/down buttons. Typed changes save on Enter or when leaving the field; arrow changes save immediately. Empty minimum levels turn low-stock alerts off for that entry, while zero quantities always show an out-of-stock alert. Imported entries begin with minimum stock set to 2. Blank spreadsheet locations stay blank; users can enter a shelf, room or installation point through Edit details. New sites and locations become filter options automatically.
+
+Inventory lives in `ops_it_assets`. Apply `database_migrations/018_it_asset_register.sql` before deploying the frontend. Spreadsheet rows are imported directly into the protected database; live inventory and serial numbers are not included in public source files. IT Department sessions can update the register, Management and Administrator sessions can read it, and other departments have no access. Session validation runs inside the private API functions; public wrappers use security invoker. Direct table access is denied. Updates lock the row and check its revision to prevent stale overwrites, and successful edits enter the existing operations audit log. The tab refreshes every 30 seconds while visible, without replacing unfinished input.
+
+The existing external-system launchers remain available:
+
+- [AssetTiger](https://www.assettiger.com/) for external asset-system access.
 - [Bitwarden Web Vault](https://vault.bitwarden.com/) for the IT password manager.
 
 The links open in separate browser tabs. Department Operations does not embed the sites, copy their databases or store their credentials.

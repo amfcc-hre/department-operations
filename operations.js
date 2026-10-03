@@ -674,6 +674,7 @@
   }
 
   async function signOut(callServer) {
+    if (window.AMFCCAssetRegister) window.AMFCCAssetRegister.reset();
     if (callServer !== false && state.session && state.session.session_token) {
       try { await rpc("ops_logout", { p_session_token: state.session.session_token }); } catch (error) { /* local logout still proceeds */ }
     }
@@ -745,6 +746,7 @@
     if (!isDepartment()) await loadStudentServices();
     else state.studentServices = null;
     renderAll();
+    if (window.AMFCCAssetRegister && el("view-assets") && el("view-assets").classList.contains("active")) window.AMFCCAssetRegister.refresh(true);
     await openLinkedGatePass();
     if (showMessage) toast("Workspace refreshed.");
   }
@@ -1366,7 +1368,7 @@
       workflow: [["Work planning","Plan the department's actual workload."],["Resources","Track the stock and equipment the department uses."],["Operational record","Keep dated records for reporting and follow-up."]]
     };
     var profiles = {
-      "it-department": { eyebrow:"IT operations",title:"IT service desk, assets and secure access",description:"Manage technology work, devices, network issues and repairs, with secure links to the school asset register and password vault.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT tools and service"},externalTools:[{label:"Open AssetTiger",url:"https://www.assettiger.com/",description:"School asset register"},{label:"Open password vault",url:"https://vault.bitwarden.com/",description:"Bitwarden secure vault"}],workflow:[["Service desk","Record faults, fixes and follow-up work."],["Asset register","Open AssetTiger for the authoritative device and equipment record."],["Passwords and access","Open Bitwarden for shared credentials. Passwords are never stored in this site."]]},
+      "it-department": { eyebrow:"IT operations",title:"IT service desk, assets and secure access",description:"Manage technology work, devices, network issues and repairs. Open the asset register for equipment and supplies.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT tools and service"},externalTools:[{label:"Open AssetTiger",url:"https://www.assettiger.com/",description:"School asset register"},{label:"Open password vault",url:"https://vault.bitwarden.com/",description:"Bitwarden secure vault"}],workflow:[["Service desk","Record faults, fixes and follow-up work."],["Asset register","Search equipment and supplies, update stock and check low-stock alerts in the Asset register tab."],["Passwords and access","Open Bitwarden for shared credentials. Passwords are never stored in this site."]]},
       "husbandry": { eyebrow:"Animal husbandry",title:"Animal care and production",description:"Plan animal care, manage feed and supplies, and record health, production and losses.",plan:"Plan animal care",planTypeLabel:"Care plan type",planTypePlaceholder:"Routine, health, breeding or facility work",planTitleLabel:"Animal group or work",planTitlePlaceholder:"Describe the care plan",stock:"Add feed or husbandry supply",stockNameLabel:"Feed, medicine or supply",stockCategoryLabel:"Supply category",stockCategoryPlaceholder:"Enter the husbandry category",stockUnitPlaceholder:"kg, bag, bottle, item",log:"Record animal care or production",logTypeLabel:"Husbandry record type",logTypePlaceholder:"Feeding, health, breeding, production or loss",logTitleLabel:"Animal group or event",quantityLabel:"Animals or output",nav:{tasks:"Animal care work",tools:"Animal care and feed"},workflow:[["Daily animal care","Plan routine care and facility work."],["Feed and supplies","Track quantities received, used and remaining."],["Health and production","Record checks, treatment, output and losses."]]},
       "horticulture": { eyebrow:"Horticulture operations",title:"Open Field and Greenhouses",description:"One Horticulture workspace for crop planning, inputs, harvests and two separate reporting sections.",plan:"Plan crop work",planTypeLabel:"Crop plan type",planTypePlaceholder:"Planting, watering, crop care or harvest",planTitleLabel:"Crop, field or greenhouse",planTitlePlaceholder:"Describe the crop plan",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Input category",stockCategoryPlaceholder:"Enter the horticulture category",stockUnitPlaceholder:"kg, litre, tray, packet, item",log:"Record crop or harvest activity",logTypeLabel:"Crop record type",logTypePlaceholder:"Planting, watering, treatment, harvest or loss",logTitleLabel:"Crop and section",quantityLabel:"Area or output",nav:{tasks:"Crop work",requests:"Request field support","daily-report":"Section report","period-report":"Section summaries",tools:"Crops, inputs and harvests"},workflow:[["Open Field","Plan field work and submit its report separately."],["Greenhouses","Manage Greenhouses 1, 2 and 3 and submit one Greenhouses report."],["Inputs and harvests","Track seed, materials, treatments, output and losses."]]},
       "maintenance": { eyebrow:"Maintenance operations",title:"Faults, repairs and preventive work",description:"Run the maintenance job queue, manage parts and tools, and record repair history.",plan:"Plan maintenance jobs",planTypeLabel:"Maintenance type",planTypePlaceholder:"Fault, repair, inspection or preventive work",planTitleLabel:"Asset or location",planTitlePlaceholder:"What needs maintenance?",stock:"Add spare, material or tool",stockNameLabel:"Part, material or tool",stockCategoryLabel:"Maintenance category",stockCategoryPlaceholder:"Enter the maintenance category",stockUnitPlaceholder:"item, metre, litre, box",log:"Record job progress or equipment work",logTypeLabel:"Maintenance record type",logTypePlaceholder:"Inspection, repair, servicing or completion",logTitleLabel:"Asset, location or job",quantityLabel:"Items or hours",nav:{tasks:"Maintenance jobs",requests:"Request work crew",tools:"Repairs, spares and tools"},workflow:[["Fault queue","Turn faults into trackable repair jobs."],["Preventive work","Plan inspections and regular servicing."],["Spares and tools","Track parts, materials, equipment and usage."]]},
@@ -1433,6 +1435,10 @@
       return;
     }
     var profile = toolProfile(tools.department_slug || "");
+    var itAssets = tools.department_slug === "it-department";
+    el("view-tools").classList.toggle("asset-it-tools", itAssets);
+    el("tool-stock-item-form").hidden = itAssets;
+    el("tool-current-stock-panel").hidden = itAssets;
     el("tools-eyebrow").textContent = profile.eyebrow;
     el("tools-heading").textContent = profile.title;
     el("tools-description").textContent = profile.description;
@@ -1457,7 +1463,9 @@
     el("tool-workflow-cards").innerHTML = (profile.workflow || []).map(function (item) {
       return '<article class="workflow-card"><h3>' + escapeHtml(item[0]) + '</h3><p>' + escapeHtml(item[1]) + '</p></article>';
     }).join("");
-    var serviceLink = tools.department_slug === "kitchen"
+    var serviceLink = tools.department_slug === "it-department"
+      ? '<button class="button primary" type="button" data-open-view="assets">Asset register</button>'
+      : tools.department_slug === "kitchen"
       ? '<button class="button primary" type="button" data-open-view="meal-service">Meal service</button>'
       : tools.department_slug === "clinic"
       ? '<button class="button primary" type="button" data-open-view="clinic-service">Clinic register</button>'
@@ -1467,7 +1475,7 @@
     var externalLinks = (profile.externalTools || []).filter(function (tool) { return /^https:\/\//i.test(tool.url || ""); }).map(function (tool) {
       return '<a class="button primary" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(tool.description || tool.label) + '">' + escapeHtml(tool.label) + '</a>';
     }).join("");
-    el("tool-quick-links").innerHTML = externalLinks + serviceLink + '<a class="button secondary" href="#tool-plan-form">Planning</a><a class="button secondary" href="#tool-stock-item-form">Stock and usage</a><a class="button secondary" href="#tool-log-form">Activity records</a>';
+    el("tool-quick-links").innerHTML = serviceLink + externalLinks + '<a class="button secondary" href="#tool-plan-form">Planning</a>' + (itAssets ? '' : '<a class="button secondary" href="#tool-stock-item-form">Stock and usage</a>') + '<a class="button secondary" href="#tool-log-form">Activity records</a>';
 
     var items = tools.stock_items || [];
     fillSelect(el("tool-stock-item"), items, { id: "id", label: "item_name", first: items.length ? "Choose item" : "Add an item first" });
@@ -2677,8 +2685,10 @@
   }
 
   function switchView(view) {
+    if (view === "assets" && (!window.AMFCCAssetRegister || !window.AMFCCAssetRegister.allowed())) { toast("IT Department access is required.", true); return; }
     all(".view").forEach(function (section) { section.classList.toggle("active", section.id === "view-" + view); });
     all("#main-nav button").forEach(function (button) { button.classList.toggle("active", button.dataset.view === view); });
+    if (view === "assets") window.AMFCCAssetRegister.open();
     if (view === "tools" && selectedToolsDepartmentId() && (!state.tools || state.tools.department_id !== selectedToolsDepartmentId())) {
       loadDepartmentTools(selectedToolsDepartmentId()).then(renderTools).catch(function (error) { toast(error.message, true); });
     }
@@ -3714,6 +3724,7 @@
     state.client = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
+    if (window.AMFCCAssetRegister) window.AMFCCAssetRegister.mount({ rpc: rpc, getSession: function () { return state.session; } });
     bindEvents();
     clearInterval(state.plannerTimer);
     state.plannerTimer=setInterval(refreshPlannerLive,30000);

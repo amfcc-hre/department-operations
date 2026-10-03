@@ -1,7 +1,8 @@
-const CACHE='amfcc-department-operations-v24-two-bell-ringers';
+const CACHE='amfcc-department-operations-v25-it-assets';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
+  './asset-register.css','./asset-register.js',
   './meal-checkin.html','./meal-checkin.css','./meal-checkin.js',
   './pod.html','./pod.css','./pod.js'
   ,'./immigration.html','./immigration.css','./immigration.js'

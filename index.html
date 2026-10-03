@@ -11,6 +11,7 @@
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
   <link rel="stylesheet" href="operations.css?v=12">
+  <link rel="stylesheet" href="asset-register.css?v=1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -96,6 +97,7 @@
       <button type="button" data-view="daily-report" data-roles="department,management">Daily report</button>
       <button type="button" data-view="period-report" data-roles="department,management">Weekly / monthly</button>
       <button type="button" data-view="tools" data-roles="department,management">Department tools</button>
+      <button type="button" data-view="assets" data-roles="department,management,administrator" data-department-slug="it-department" hidden>Asset register</button>
       <button type="button" data-view="transfers" data-roles="department,management">Transfers</button>
       <button type="button" data-view="admin-office-passes" data-roles="department" data-department-slug="administrators-office">Gate passes</button>
       <button type="button" data-view="student-services" data-roles="student_leadership,management,administrator">Student services</button>
@@ -103,6 +105,55 @@
       <button type="button" data-view="reports" data-roles="management,administrator">Review reports</button>
       <button type="button" data-view="access" data-roles="administrator">Department access</button>
     </nav>
+
+    <section id="view-assets" class="view" aria-labelledby="asset-heading">
+      <div class="view-heading">
+        <div><p class="eyebrow">IT Department</p><h2 id="asset-heading">Asset register</h2><p class="muted">Find equipment and supplies, check stock and update quantities.</p></div>
+        <div class="header-actions"><button id="asset-refresh" type="button" class="button secondary">Refresh stock</button><button id="asset-add" type="button" class="button primary" hidden>Add asset</button></div>
+      </div>
+      <div id="asset-message" class="asset-message" role="status" aria-live="polite" hidden></div>
+      <div id="asset-dashboard" class="asset-dashboard" aria-label="All inventory stock summary"></div>
+      <div id="asset-alerts" class="asset-alerts" hidden></div>
+      <details id="asset-breakdown" class="panel asset-breakdown" hidden>
+        <summary>Stock by category and site</summary><div class="asset-breakdown-grid"><div><h3>Categories</h3><div id="asset-category-totals"></div></div><div><h3>Sites</h3><div id="asset-site-totals"></div></div></div>
+      </details>
+      <article class="panel asset-register-panel">
+        <div class="asset-search-row"><label class="asset-search-label">Search assets<input id="asset-search" type="search" autocomplete="off" placeholder="Search description, tag, brand, model, serial number or location"></label><button id="asset-clear" type="button" class="button quiet">Clear filters</button></div>
+        <details id="asset-filter-options" class="asset-filter-options" open><summary>Filters and sorting</summary><div class="asset-filters">
+          <label>Category<select id="asset-filter-category"><option value="">All categories</option></select></label>
+          <label>Site<select id="asset-filter-site"><option value="">All sites</option></select></label>
+          <label>Location<select id="asset-filter-location"><option value="">All locations</option></select></label>
+          <label>Status<select id="asset-filter-status"><option value="">All statuses</option></select></label>
+          <label>Stock level<select id="asset-filter-stock"><option value="">All stock</option><option value="attention">Needs attention</option><option value="low">Low stock</option><option value="out">Out of stock</option><option value="healthy">In stock</option></select></label>
+          <label>Sort by<select id="asset-sort"><option value="name">Description A to Z</option><option value="quantity-asc">Quantity: low to high</option><option value="quantity-desc">Quantity: high to low</option><option value="updated">Recently updated</option></select></label>
+        </div></details>
+        <div class="asset-results-heading"><p id="asset-results-count" role="status" aria-live="polite">Open the register to load stock.</p><p id="asset-edit-help" class="muted" hidden>Type a number or use ↑ / ↓. Changes save automatically. Blank minimum = low-stock alerts off.</p></div>
+        <div id="asset-list" class="asset-list" aria-busy="false"></div>
+      </article>
+      <p id="asset-last-refreshed" class="muted asset-last-refreshed"></p>
+      <dialog id="asset-dialog" class="asset-dialog" aria-labelledby="asset-dialog-title">
+        <form id="asset-form" class="asset-form">
+          <div class="asset-dialog-heading"><h2 id="asset-dialog-title">Asset details</h2><button id="asset-dialog-close" type="button" class="button quiet">Close</button></div>
+          <p id="asset-form-error" class="asset-message error" role="alert" hidden></p>
+          <div class="asset-form-fields">
+            <label class="asset-span-2">Description<input id="asset-description" name="description" maxlength="500" required></label>
+            <label>Asset Tag ID<input id="asset-tag" name="asset_tag_id" maxlength="200"></label>
+            <label>Status<input id="asset-status" name="status" list="asset-status-options" maxlength="100" required></label>
+            <label>Quantity<input id="asset-quantity" name="quantity" type="number" inputmode="numeric" min="0" max="2147483647" step="1" required></label>
+            <label>Minimum stock<input id="asset-minimum" name="minimum_stock" type="number" inputmode="numeric" min="0" max="2147483647" step="1" placeholder="Blank turns alerts off"></label>
+            <label>Site<input id="asset-site" name="site" list="asset-site-options" maxlength="200" required></label>
+            <label>Location<input id="asset-location" name="location" list="asset-location-options" maxlength="200" placeholder="Room, shelf or installation point"></label>
+            <label>Brand<input id="asset-brand" name="brand" list="asset-brand-options" maxlength="200"></label>
+            <label>Category<input id="asset-category" name="category" list="asset-category-options" maxlength="200"></label>
+            <label>Model<input id="asset-model" name="model" maxlength="300"></label>
+            <label>Serial No<input id="asset-serial" name="serial_no" maxlength="300"></label>
+          </div>
+          <p class="muted asset-minimum-help">A low-stock alert appears when quantity is at or below the minimum. Zero stock always shows an alert.</p>
+          <div class="asset-dialog-actions"><button id="asset-dialog-cancel" type="button" class="button secondary">Cancel</button><button id="asset-save" type="submit" class="button primary">Save asset</button></div>
+        </form>
+      </dialog>
+      <datalist id="asset-status-options"></datalist><datalist id="asset-site-options"></datalist><datalist id="asset-location-options"></datalist><datalist id="asset-brand-options"></datalist><datalist id="asset-category-options"></datalist>
+    </section>
 
     <section id="view-meal-service" class="view" aria-labelledby="meal-service-heading">
       <div class="view-heading">
@@ -564,7 +615,7 @@
         </form>
       </div>
       <div class="two-column">
-        <article class="panel">
+        <article id="tool-current-stock-panel" class="panel">
           <div class="panel-heading"><h3>Current stock</h3></div>
           <form id="tool-stock-movement-form" class="filter-row">
             <label>Item<select id="tool-stock-item" required><option value="">Add an item first</option></select></label>
@@ -927,6 +978,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js"></script>
-  <script src="operations.js?v=24"></script>
+  <script src="asset-register.js?v=1"></script>
+  <script src="operations.js?v=25"></script>
 </body>
 </html>
