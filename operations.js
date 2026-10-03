@@ -512,6 +512,13 @@
     sessionStorage.setItem("amfcc_ops_session", JSON.stringify(session));
   }
 
+  function openRegisterReturn() {
+    var target = new URLSearchParams(window.location.search).get("returnTo");
+    if (["it-assets.html", "it-documents.html"].indexOf(target) < 0 || !state.session) return false;
+    window.location.replace(target);
+    return true;
+  }
+
   function restoreSession() {
     try {
       var raw = sessionStorage.getItem("amfcc_ops_session");
@@ -1368,7 +1375,7 @@
       workflow: [["Work planning","Plan the department's actual workload."],["Resources","Track the stock and equipment the department uses."],["Operational record","Keep dated records for reporting and follow-up."]]
     };
     var profiles = {
-      "it-department": { eyebrow:"IT operations",title:"IT service desk, assets and secure access",description:"Manage technology work, devices, network issues and repairs. Open the asset register for equipment and supplies.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT tools and service"},externalTools:[{label:"Open AssetTiger",url:"https://www.assettiger.com/",description:"School asset register"},{label:"Open password vault",url:"https://vault.bitwarden.com/",description:"Bitwarden secure vault"}],workflow:[["Service desk","Record faults, fixes and follow-up work."],["Asset register","Search equipment and supplies, update stock and check low-stock alerts in the Asset register tab."],["Passwords and access","Open Bitwarden for shared credentials. Passwords are never stored in this site."]]},
+      "it-department": { eyebrow:"IT operations",title:"IT service desk, assets and secure access",description:"Manage technology work, devices, network issues and repairs. Open the asset register for equipment and supplies.",plan:"Plan IT maintenance and improvements",planTypeLabel:"IT work type",planTypePlaceholder:"Incident, maintenance, installation or improvement",planTitleLabel:"System or work item",planTitlePlaceholder:"Describe the IT work",stock:"Register device, part or supply",stockNameLabel:"Device, part or supply",stockCategoryLabel:"Asset category",stockCategoryPlaceholder:"Enter the category used by IT",stockUnitPlaceholder:"device, cable, licence, item",log:"Record incident or service work",logTypeLabel:"IT record type",logTypePlaceholder:"Incident, repair, setup, update or inspection",logTitleLabel:"System or issue",logTitlePlaceholder:"What was worked on?",quantityLabel:"Devices affected",nav:{tasks:"IT work queue",requests:"Support requests",tools:"IT tools and service"},externalTools:[{label:"Open password vault",url:"https://vault.bitwarden.com/",description:"Bitwarden secure vault"}],workflow:[["Service desk","Record faults, fixes and follow-up work."],["Asset register","Open the asset register page to search equipment, update quantities and check low-stock alerts."],["Passwords and access","Open Bitwarden for shared credentials. Passwords are never stored in this site."]]},
       "husbandry": { eyebrow:"Animal husbandry",title:"Animal care and production",description:"Plan animal care, manage feed and supplies, and record health, production and losses.",plan:"Plan animal care",planTypeLabel:"Care plan type",planTypePlaceholder:"Routine, health, breeding or facility work",planTitleLabel:"Animal group or work",planTitlePlaceholder:"Describe the care plan",stock:"Add feed or husbandry supply",stockNameLabel:"Feed, medicine or supply",stockCategoryLabel:"Supply category",stockCategoryPlaceholder:"Enter the husbandry category",stockUnitPlaceholder:"kg, bag, bottle, item",log:"Record animal care or production",logTypeLabel:"Husbandry record type",logTypePlaceholder:"Feeding, health, breeding, production or loss",logTitleLabel:"Animal group or event",quantityLabel:"Animals or output",nav:{tasks:"Animal care work",tools:"Animal care and feed"},workflow:[["Daily animal care","Plan routine care and facility work."],["Feed and supplies","Track quantities received, used and remaining."],["Health and production","Record checks, treatment, output and losses."]]},
       "horticulture": { eyebrow:"Horticulture operations",title:"Open Field and Greenhouses",description:"One Horticulture workspace for crop planning, inputs, harvests and two separate reporting sections.",plan:"Plan crop work",planTypeLabel:"Crop plan type",planTypePlaceholder:"Planting, watering, crop care or harvest",planTitleLabel:"Crop, field or greenhouse",planTitlePlaceholder:"Describe the crop plan",stock:"Add seed, input or material",stockNameLabel:"Seed, input or material",stockCategoryLabel:"Input category",stockCategoryPlaceholder:"Enter the horticulture category",stockUnitPlaceholder:"kg, litre, tray, packet, item",log:"Record crop or harvest activity",logTypeLabel:"Crop record type",logTypePlaceholder:"Planting, watering, treatment, harvest or loss",logTitleLabel:"Crop and section",quantityLabel:"Area or output",nav:{tasks:"Crop work",requests:"Request field support","daily-report":"Section report","period-report":"Section summaries",tools:"Crops, inputs and harvests"},workflow:[["Open Field","Plan field work and submit its report separately."],["Greenhouses","Manage Greenhouses 1, 2 and 3 and submit one Greenhouses report."],["Inputs and harvests","Track seed, materials, treatments, output and losses."]]},
       "maintenance": { eyebrow:"Maintenance operations",title:"Faults, repairs and preventive work",description:"Run the maintenance job queue, manage parts and tools, and record repair history.",plan:"Plan maintenance jobs",planTypeLabel:"Maintenance type",planTypePlaceholder:"Fault, repair, inspection or preventive work",planTitleLabel:"Asset or location",planTitlePlaceholder:"What needs maintenance?",stock:"Add spare, material or tool",stockNameLabel:"Part, material or tool",stockCategoryLabel:"Maintenance category",stockCategoryPlaceholder:"Enter the maintenance category",stockUnitPlaceholder:"item, metre, litre, box",log:"Record job progress or equipment work",logTypeLabel:"Maintenance record type",logTypePlaceholder:"Inspection, repair, servicing or completion",logTitleLabel:"Asset, location or job",quantityLabel:"Items or hours",nav:{tasks:"Maintenance jobs",requests:"Request work crew",tools:"Repairs, spares and tools"},workflow:[["Fault queue","Turn faults into trackable repair jobs."],["Preventive work","Plan inspections and regular servicing."],["Spares and tools","Track parts, materials, equipment and usage."]]},
@@ -1428,6 +1435,7 @@
 
   function renderTools() {
     var tools = state.tools;
+    el("it-register-tools").hidden = !(tools && tools.department_id === selectedToolsDepartmentId() && tools.department_slug === "it-department");
     if (!tools || tools.department_id !== selectedToolsDepartmentId()) {
       el("tools-description").textContent = "Choose a department to open its tools.";
       el("tool-stock-list").innerHTML = "No department selected.";
@@ -1464,7 +1472,7 @@
       return '<article class="workflow-card"><h3>' + escapeHtml(item[0]) + '</h3><p>' + escapeHtml(item[1]) + '</p></article>';
     }).join("");
     var serviceLink = tools.department_slug === "it-department"
-      ? '<button class="button primary" type="button" data-open-view="assets">Asset register</button>'
+      ? ''
       : tools.department_slug === "kitchen"
       ? '<button class="button primary" type="button" data-open-view="meal-service">Meal service</button>'
       : tools.department_slug === "clinic"
@@ -2964,7 +2972,7 @@
         }
         var result = await rpc("ops_login", { p_access_type: value("access-type"), p_department_slug: value("login-department"), p_access_code: chosenPin });
         if (result.status !== "success") throw new Error(result.message || "Sign-in failed.");
-        storeSession(result); showApp(); await loadData(false); toast(setupResult ? "Department PIN created and workspace opened." : "Workspace opened.");
+        storeSession(result); if (openRegisterReturn()) return; showApp(); await loadData(false); toast(setupResult ? "Department PIN created and workspace opened." : "Workspace opened.");
       } catch (error) { toast(error.message, true); }
       finally { setBusy(event.currentTarget, false); }
     });
@@ -3731,6 +3739,7 @@
     try {
       await loadCatalog();
       if (restoreSession() && (!state.gatePassLink || state.session.role === state.gatePassLink.access)) {
+        if (openRegisterReturn()) return;
         showApp();
         try { await loadData(false); }
         catch (error) { toast(error.message, true); signOut(false); }

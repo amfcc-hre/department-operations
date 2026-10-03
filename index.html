@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="shared_ui.css">
   <link rel="stylesheet" href="operations.css?v=12">
   <link rel="stylesheet" href="asset-register.css?v=1">
+  <link rel="stylesheet" href="it-register.css?v=1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -97,7 +98,8 @@
       <button type="button" data-view="daily-report" data-roles="department,management">Daily report</button>
       <button type="button" data-view="period-report" data-roles="department,management">Weekly / monthly</button>
       <button type="button" data-view="tools" data-roles="department,management">Department tools</button>
-      <button type="button" data-view="assets" data-roles="department,management,administrator" data-department-slug="it-department" hidden>Asset register</button>
+      <a class="button secondary" href="it-assets.html" data-roles="department,management,administrator" data-department-slug="it-department" hidden>Asset register</a>
+      <a class="button secondary" href="it-documents.html" data-roles="department,management,administrator" data-department-slug="it-department" hidden>Documentation</a>
       <button type="button" data-view="transfers" data-roles="department,management">Transfers</button>
       <button type="button" data-view="admin-office-passes" data-roles="department" data-department-slug="administrators-office">Gate passes</button>
       <button type="button" data-view="student-services" data-roles="student_leadership,management,administrator">Student services</button>
@@ -333,10 +335,7 @@
         <div class="panel-heading"><h3>Work needing attention</h3></div>
         <div id="attention-list" class="card-list empty-state">Nothing currently needs attention.</div>
       </article>
-      <article class="panel asset-link-panel" data-roles="administrator">
-        <div><p class="eyebrow">Asset register</p><h3>AssetTiger</h3><p class="muted">Open the school asset register in a new tab.</p></div>
-        <a class="button secondary" href="https://www.assettiger.com/" target="_blank" rel="noopener noreferrer">Open AssetTiger</a>
-      </article>
+      <div class="register-tiles" data-roles="administrator"><article class="panel register-tile"><p class="eyebrow">Equipment and supplies</p><h3>Asset register</h3><p class="muted">Search assets, check stock levels and view low-stock alerts.</p><a class="button primary" href="it-assets.html">Open asset register</a></article><article class="panel register-tile"><p class="eyebrow">IT knowledge</p><h3>Documentation register</h3><p class="muted">Technical How-Tos, specifications, document versions and archives.</p><a class="button primary" href="it-documents.html">Open documentation</a></article></div>
     </section>
 
     <section id="view-duties" class="view" aria-labelledby="duties-heading">
@@ -581,6 +580,7 @@
       <div class="view-heading"><div><p id="tools-eyebrow" class="eyebrow">Department-specific workspace</p><h2 id="tools-heading">Department tools</h2><p id="tools-description" class="muted"></p></div></div>
       <label class="admin-department-field date-control">Department<select id="tools-department"></select></label>
       <div id="tool-workflow-cards" class="workflow-grid"></div>
+      <div id="it-register-tools" class="register-tiles" hidden><article class="panel register-tile"><p class="eyebrow">Equipment and supplies</p><h3>Asset register</h3><p class="muted">Search assets, check stock levels and view low-stock alerts.</p><a class="button primary" href="it-assets.html">Open asset register</a></article><article class="panel register-tile"><p class="eyebrow">IT knowledge</p><h3>Documentation register</h3><p class="muted">Technical How-Tos, specifications, document versions and archives.</p><a class="button primary" href="it-documents.html">Open documentation</a></article></div>
       <div id="tool-quick-links" class="tool-links"></div>
       <div class="three-column tool-columns">
         <form id="tool-plan-form" class="panel form-stack">
@@ -977,8 +977,8 @@
   </template>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="shared_config.js"></script>
+  <script src="shared_config.js?v=2"></script>
   <script src="asset-register.js?v=1"></script>
-  <script src="operations.js?v=25"></script>
+  <script src="operations.js?v=26"></script>
 </body>
 </html>

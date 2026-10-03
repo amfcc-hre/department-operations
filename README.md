@@ -177,16 +177,7 @@ IT users can type a quantity or use the up/down buttons. Typed changes save on E
 
 Inventory lives in `ops_it_assets`. Apply `database_migrations/018_it_asset_register.sql` before deploying the frontend. Spreadsheet rows are imported directly into the protected database; live inventory and serial numbers are not included in public source files. IT Department sessions can update the register, Management and Administrator sessions can read it, and other departments have no access. Session validation runs inside the private API functions; public wrappers use security invoker. Direct table access is denied. Updates lock the row and check its revision to prevent stale overwrites, and successful edits enter the existing operations audit log. The tab refreshes every 30 seconds while visible, without replacing unfinished input.
 
-The existing external-system launchers remain available:
-
-- [AssetTiger](https://www.assettiger.com/) for external asset-system access.
-- [Bitwarden Web Vault](https://vault.bitwarden.com/) for the IT password manager.
-
-The links open in separate browser tabs. Department Operations does not embed the sites, copy their databases or store their credentials.
-
-Use a Bitwarden organisation and collections when more than one authorised IT person needs shared access. Put shared school credentials in the appropriate collection rather than sharing an individual's private vault. Passwords, recovery codes, emergency-access documents and vault exports must never be entered into Department Operations, its activity notes, Supabase or GitHub.
-
-The AssetTiger button currently opens the standard sign-in page because a school-specific AssetTiger URL was not supplied. Replace only that URL in `operations.js` if the school has a direct workspace link. A future read-only AssetTiger summary can use its API, but its API key must be held server-side.
+The IT tools page and School Administration overview now link to the inbuilt asset and documentation registers. The asset register replaces the AssetTiger launcher. Bitwarden remains available for the IT password manager. Passwords, recovery codes, emergency-access documents and vault exports must never be entered into Department Operations, its activity notes, Supabase or GitHub.
 
 ## Tasks and student allocations
 
@@ -206,7 +197,7 @@ The AssetTiger button currently opens the standard sign-in page because a school
 - Student Leadership can enter the Prefect on Duty and Senior Prefect on Duty for the current week or future weeks.
 - A department can be marked always on for every day and session, or for selected days and sessions. Its configured cohort counts are reserved before the remaining group numbers are shown.
 
-School Administration opens to Overview. Its navigation intentionally excludes Daily report, Meal scanner, Session requests, Department tools and Transfers. The overview links directly to open tasks, on-campus and off-campus students, pending and overdue passes, duty rosters, report attention, notifications, work attention and AssetTiger.
+School Administration opens to Overview. Its navigation intentionally excludes Daily report, Meal scanner, Session requests, Department tools and Transfers. The overview links directly to open tasks, on-campus and off-campus students, pending and overdue passes, duty rosters, report attention, notifications, work attention, the asset register and the documentation register.
 
 Student Leadership does not review or approve department reports. Management and School Administration retain report attention and approval work.
 
@@ -346,10 +337,18 @@ Apply `supabase/migrations/202609020002_department_first_login_pin_setup.sql` on
 17. In each Student services list, test the gender, class and campus-status filters together.
 18. In Student Leadership, switch between daily and weekly planner views, then move a test task by drag and drop and by the Move button.
 19. Open Department members and confirm an HOD can edit only their own roster while Student Leadership, Management and School Administration can edit any roster.
-20. Sign in to IT Department, open AssetTiger and Bitwarden, and confirm both launch in separate tabs without leaving the Operations session.
+20. Sign in to IT Department and confirm the Asset register and Documentation tiles open their dedicated pages. Check that both tiles also appear on the School Administration overview.
 
 ## Related repositories
 
 - [AMFCC IT Administration](https://github.com/amfcc-hre/it-admin-site): maximum-permission settings and PIN management.
 - [AMFCC Student Services](https://github.com/amfcc-hre/amfcc_student_services): student meal check-in and personal gate-pass requests.
 - [AMFCC Library](https://github.com/amfcc-hre/library-site): ISBN lookup, catalogue, circulation and loan reporting.
+
+## Dedicated IT registers
+
+`it-assets.html` and `it-documents.html` are dedicated pages using the existing Department Operations PIN session. IT tools and the School Administration overview link directly to both. A direct visit without a session shows a workspace login link. After normal login, the requested register opens automatically.
+
+Documentation has Technical How-Tos and Technical Specifications, searchable categories, PDF/DOC/DOCX imports up to 20 MB, automatically numbered versions, change notes, upload attribution and a downloadable archive. IT Department and School Administration can import and update documents; Management can read. Earlier files are never overwritten. Row locking and the expected current version prevent competing uploads from replacing each other.
+
+Apply `supabase/migrations/20261003160613_it_document_register.sql` and deploy the `it-document-files` Edge Function with its supplied `deno.json`. The function uses custom authentication: every upload or download validates the existing Operations session. Files are stored in the private `it-technical-documents` bucket and are streamed only after authorization. Its health endpoint returns no document data. The four supplied Word documents were imported as initial Technical Specifications versions directly into private storage. Files and their contents are not committed to GitHub.

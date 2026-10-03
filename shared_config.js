@@ -4,6 +4,7 @@ window.APP_CONFIG = {
 };
 
 (function () {
+  if (document.body && document.body.dataset.itRegister) return;
   var script = document.createElement("script");
   script.src = "enrolment_tracking.js?v=1";
   script.async = false;

@@ -1,8 +1,9 @@
-const CACHE='amfcc-department-operations-v25-it-assets';
+const CACHE='amfcc-department-operations-v26-it-registers';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
   './asset-register.css','./asset-register.js',
+  './it-assets.html','./it-assets-page.js','./it-documents.html','./it-documents.js','./it-register.css','./it-register-session.js',
   './meal-checkin.html','./meal-checkin.css','./meal-checkin.js',
   './pod.html','./pod.css','./pod.js'
   ,'./immigration.html','./immigration.css','./immigration.js'
@@ -14,7 +15,7 @@ self.addEventListener('activate',event=>{
   event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));
 });
 self.addEventListener('fetch',event=>{
-  if(event.request.method!=='GET')return;
+  if(event.request.method!=='GET'||new URL(event.request.url).origin!==self.location.origin)return;
   event.respondWith(fetch(event.request,{cache:'no-store'}).then(response=>{
     if(response&&response.ok&&response.type!=='opaque'){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));}
     return response;
