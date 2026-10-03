@@ -12,7 +12,7 @@ window.APP_CONFIG = {
         node &&
         node.nodeType === 1 &&
         node.id === "view-enrolment" &&
-        !node.querySelector("#enrolment-refresh")
+ !node.querySelector("#enrolment-refresh")
       ) {
         var raw = node.textContent || "";
         if (
