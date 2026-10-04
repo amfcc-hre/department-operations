@@ -1,116 +1,50 @@
-name: Restore AMFCC Department Operations
+name: Validate AMFCC Department Operations
 
 on:
   push:
     paths:
       - ".github/workflows/restore-amfcc.yml"
-      - "fee_enrolment_controls.js"
+      - "*.html"
+      - "*.js"
+      - "*.css"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  restore:
-    if: github.actor != 'github-actions[bot]'
+  validate:
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Restore last known-good application files
+      - name: Validate current application files
         shell: bash
         run: |
           set -euo pipefail
-          GOOD_COMMIT="45b104b903fd41c8790bc6c2ce000c19b4224f37"
-          git checkout "$GOOD_COMMIT" -- index.html shared_config.js enrolment_tracking.js
-
-      - name: Fix Term enrolment rendering and remove read-only wording
-        shell: python
-        run: |
-          from pathlib import Path
-
-          path = Path("enrolment_tracking.js")
-          text = path.read_text(encoding="utf-8")
-
-          text = text.replace("&lt;", "<").replace("&gt;", ">")
-
-          text = text.replace(
-              '.replace(/&/g, "&amp;").replace(/</g, "&amp;lt;").replace(/>/g, "&amp;gt;")',
-              '.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")'
-          )
-
-          text = text.replace(
-              "Track every student through the term registration workflow. This view is read-only.",
-              "Track and manage every student through the term registration workflow."
-          )
-
-          path.write_text(text, encoding="utf-8")
-
-      - name: Load the fee controls safely
-        shell: python
-        run: |
-          from pathlib import Path
-
-          cfg = Path("shared_config.js")
-          text = cfg.read_text(encoding="utf-8")
-
-          text = text.replace(
-              'script.src = "enrolment_tracking.js?v=1";',
-              'script.src = "enrolment_tracking.js?v=2";'
-          )
-
-          marker = 'document.head.appendChild(script);\n})();'
-          replacement = (
-              'document.head.appendChild(script);\n\n'
-              '  script.addEventListener("load", function () {\n'
-              '    var feeScript = document.createElement("script");\n'
-              '    feeScript.src = "fee_enrolment_controls.js?v=1";\n'
-              '    feeScript.async = false;\n'
-              '    document.head.appendChild(feeScript);\n'
-              '  });\n'
-              '})();'
-          )
-
-          if marker not in text:
-              raise SystemExit("Could not find the shared_config loader marker.")
-
-          text = text.replace(marker, replacement)
-          cfg.write_text(text, encoding="utf-8")
-
-      - name: Bust the shared config cache without changing the application shell
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path("index.html")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace('shared_config.js?v=2', 'shared_config.js?v=5')
-          path.write_text(text, encoding="utf-8")
-
-      - name: Validate application files
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check enrolment_tracking.js
+          node --check operations.js
           node --check shared_config.js
+          node --check enrolment_tracking.js
           node --check fee_enrolment_controls.js
-          grep -q 'id="app-shell"' index.html
-          grep -q 'id="main-nav"' index.html
-          grep -q 'operations.js?v=26' index.html
+          node --check vehicle-dashboard.js
+          node --check vehicle-checkout.js
+          node --check sw.js
 
-      - name: Commit restored application
-        shell: bash
+      - name: Check dashboard and standalone entry points
+        shell: python
         run: |
-          set -euo pipefail
-          git config user.name "AMFCC Recovery"
-          git config user.email "actions@users.noreply.github.com"
-          git add index.html shared_config.js enrolment_tracking.js fee_enrolment_controls.js
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
-            exit 0
-          fi
-          git commit -m "Restore Department Operations and fix Term enrolment fees"
-          git push origin HEAD:main
+          from pathlib import Path
+
+          shell = Path("index.html").read_text(encoding="utf-8")
+          page = Path("vehicles.html").read_text(encoding="utf-8")
+          config = Path("shared_config.js").read_text(encoding="utf-8")
+          for marker in ('id="app-shell"', 'id="main-nav"', 'data-vehicle-dashboard', 'vehicle-dashboard.js', 'href="vehicles.html"'):
+              assert marker in shell, f"Missing dashboard entry point: {marker}"
+          for marker in ('id="vehicle-app"', 'vehicle-checkout.js', 'vehicle-dashboard.js'):
+              assert marker in page, f"Missing standalone entry point: {marker}"
+          for script in ('enrolment_tracking.js', 'fee_enrolment_controls.js'):
+              assert script in config, f"Missing Term enrolment loader: {script}"
+              assert Path(script).is_file(), f"Missing Term enrolment script: {script}"
+          assert Path("vehicle-checkout.css").is_file(), "Missing vehicle styles"
