@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="operations.css?v=12">
   <link rel="stylesheet" href="asset-register.css?v=1">
   <link rel="stylesheet" href="it-register.css?v=1">
+  <link rel="stylesheet" href="vehicle-checkout.css?v=1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -88,6 +89,7 @@
     </div>
 
     <nav id="main-nav" class="tab-bar" aria-label="Workspace sections">
+      <a class="button secondary" href="vehicles.html" data-vehicle-link hidden>Vehicle checkout</a>
       <button type="button" data-view="meal-service" data-roles="department" data-department-slug="kitchen">Meal service</button>
       <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="accommodation-service" data-roles="department" data-accommodation-only hidden>Accommodation assignments</button>
@@ -309,6 +311,7 @@
         </div>
         <label id="overview-range-control" class="date-control">Show from <input id="range-from" type="date"></label>
       </div>
+      <section class="vehicle-dashboard" data-vehicle-dashboard aria-label="Vehicle checkout dashboard" hidden></section>
       <div id="summary-cards" class="summary-grid"></div>
       <div class="overview-grid">
         <article id="overview-duty-panel" class="panel clickable-panel" data-roles="student_leadership,management,administrator" data-open-view="duties">
@@ -582,6 +585,7 @@
       <div id="tool-workflow-cards" class="workflow-grid"></div>
       <div id="it-register-tools" class="register-tiles" hidden><article class="panel register-tile"><p class="eyebrow">Equipment and supplies</p><h3>Asset register</h3><p class="muted">Search assets, check stock levels and view low-stock alerts.</p><a class="button primary" href="it-assets.html">Open asset register</a></article><article class="panel register-tile"><p class="eyebrow">IT knowledge</p><h3>Documentation register</h3><p class="muted">Technical How-Tos, specifications, document versions and archives.</p><a class="button primary" href="it-documents.html">Open documentation</a></article></div>
       <div id="tool-quick-links" class="tool-links"></div>
+      <section class="vehicle-dashboard" data-vehicle-dashboard aria-label="Vehicle checkout dashboard" hidden></section>
       <div class="three-column tool-columns">
         <form id="tool-plan-form" class="panel form-stack">
           <h3 id="tool-plan-heading">Plan work</h3>
@@ -650,6 +654,7 @@
     </section>
 
     <section id="view-admin-office-passes" class="view" aria-labelledby="admin-office-passes-heading">
+      <section class="vehicle-dashboard" data-vehicle-dashboard aria-label="Vehicle checkout dashboard" hidden></section>
       <div class="view-heading">
         <div>
           <p class="eyebrow">Administrator's Office</p>
@@ -979,6 +984,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js?v=5"></script>
   <script src="asset-register.js?v=1"></script>
-  <script src="operations.js?v=26"></script>
+  <script src="operations.js?v=27"></script>
+  <script src="vehicle-dashboard.js?v=1"></script>
 </body>
 </html>

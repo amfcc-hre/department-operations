@@ -514,7 +514,8 @@
 
   function openRegisterReturn() {
     var target = new URLSearchParams(window.location.search).get("returnTo");
-    if (["it-assets.html", "it-documents.html"].indexOf(target) < 0 || !state.session) return false;
+    if (["it-assets.html", "it-documents.html", "vehicles.html"].indexOf(target) < 0 || !state.session) return false;
+    if (target === "vehicles.html" && !(state.session.role === "administrator" || isDepartment() && ["transport", "administrators-office"].indexOf(currentDepartmentSlug()) >= 0)) return false;
     window.location.replace(target);
     return true;
   }

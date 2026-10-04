@@ -352,3 +352,52 @@ Apply `supabase/migrations/202609020002_department_first_login_pin_setup.sql` on
 Documentation has Technical How-Tos and Technical Specifications, searchable categories, PDF/DOC/DOCX imports up to 20 MB, automatically numbered versions, change notes, upload attribution and a downloadable archive. IT Department and School Administration can import and update documents; Management can read. Earlier files are never overwritten. Row locking and the expected current version prevent competing uploads from replacing each other.
 
 Apply `supabase/migrations/20261003160613_it_document_register.sql` and deploy the `it-document-files` Edge Function with its supplied `deno.json`. The function uses custom authentication: every upload or download validates the existing Operations session. Files are stored in the private `it-technical-documents` bucket and are streamed only after authorization. Its health endpoint returns no document data. The four supplied Word documents were imported as initial Technical Specifications versions directly into private storage. Files and their contents are not committed to GitHub.
+
+
+## Vehicle checkout
+
+Open **Vehicle checkout** from Transport, School Administration or the Administrator's Office. The same live dashboard is also shown on their overview/default workspace pages. It lists the five vehicles, people taking them out, outgoing mileage and pending key confirmations. Availability refreshes every 30 seconds while the page is open, and when it is brought back into focus.
+
+1. Choose an available vehicle. Enter the checkout date and time, search for a student or staff member, enter the outgoing odometer reading and describe the journey. The borrower types their full name from the lookup and ticks the confirmation.
+2. The vehicle becomes **Awaiting key handover**. It is reserved and cannot be checked out again. School Administration OR the Administrator's Office opens the record, enters the confirming person's name and confirms that the keys have been handed over. Only one of these workspaces is needed. The vehicle becomes **Checked out**.
+3. Use **Record return**, enter the return date, time and odometer reading, and have the borrower confirm the return using their full name. The vehicle becomes **Awaiting return confirmation**.
+4. School Administration OR the Administrator's Office confirms receipt of the keys. The vehicle becomes **Available** and its last confirmed mileage is updated.
+
+All times are entered and displayed in Harare time, even when the browser uses another timezone. Outgoing mileage cannot be below the last confirmed return mileage. Return mileage cannot be below outgoing mileage. A pending checkout can be cancelled with a named actor and reason. A pending return can be corrected before the keys are confirmed. Completed records remain in searchable, paginated journey history with both signatures and named confirmations. Typed-name signatures record the borrower's acknowledgement alongside the journey.
+
+### Files and APIs
+
+| File or function | What to change here |
+| --- | --- |
+| `vehicles.html` | Standalone page headings, form fields, borrower confirmations and key confirmation wording |
+| `vehicle-checkout.css` | Vehicle dashboard, card, form, mobile and dialog appearance |
+| `vehicle-checkout.js` | Form behaviour, searchable student/staff picker, Harare time conversion, mileage display, history filters and action dialogs |
+| `vehicle-dashboard.js` | Shared five-vehicle dashboard, refresh timing and which existing login session is used |
+| `index.html` | Links and dashboard locations in the Operations workspaces |
+| `operations.js` | Login return route for the standalone vehicle page |
+| `sw.js` | Static cache version and vehicle page assets |
+| `supabase/migrations/20261004182503_vehicle_checkout.sql` | Vehicle tables, initial vehicle names, constraints, server permissions, confirmation rules, mileage checks and audit events |
+| `ops_vehicle_bootstrap` | Current availability and server-verified confirmation permissions |
+| `ops_vehicle_people` | Active student and staff lookup by name or number |
+| `ops_vehicle_history` | Journey search, status filters and history pagination |
+| `ops_vehicle_command` | Checkout, departure key confirmation, return entry, return key confirmation and cancellation |
+| `tests/vehicle_checkout.sql` | Authorization and workflow checks in a single rolled-back transaction |
+| `tests/vehicle-checkout-ui.cjs` | Browser form, lookup, timezone, mobile and dashboard integration checks using local fixtures |
+
+The additional School Administration entry points in `amfcc_student_services` use the same database APIs and shared vehicle scripts. The root `admin_index.html` dashboard opens `vehicles.html`; `administration/index.html` opens `administration/vehicles.html` for a School Administration login. The existing system session is verified on the server. Administration Staff, IT Administration, Management and Student Leadership do not acquire vehicle confirmation rights.
+
+The tables deny direct access from public clients. The public functions are security-invoker wrappers. The restricted `vehicle_private` functions validate an unexpired, unrevoked existing Operations or School Administration session before reading or writing. A vehicle row lock, one-active-checkout unique index, per-record revision and client request ID protect against simultaneous checkouts, stale updates and accidental retries. Each action is recorded in the existing Operations audit log. No service-role key is shipped to the browser.
+
+### If something goes wrong
+
+- **No vehicle checkout link:** Use Transport, School Administration or the Administrator's Office. Sign out of any other workspace first.
+- **Borrower missing:** Search a shorter part of the name, or the registration/staff number. Check that the person is active in the student or staff directory.
+- **Signature rejected:** The borrower must type the full name shown by the selected lookup and tick the confirmation. Do not type someone else's name or leave the lookup unselected.
+- **Vehicle stays unavailable after return:** An administrator must confirm actual receipt of the keys. Entering return mileage alone does not release the vehicle.
+- **Incorrect pending checkout:** Open the journey, cancel it with a reason, then enter the corrected checkout. Once keys have gone out, record its return.
+- **Incorrect pending return:** Open its journey and use **Correct return details**, then re-confirm the borrower signature before an administrator receives the keys.
+- **Someone else updated the record:** Close the dialog, use Refresh, check the latest details and reopen the journey. The server will not overwrite another person's change.
+- **Unable to connect:** Check connectivity and use Refresh. The initial connection error has a retry option; stale availability disables new actions until refreshed.
+- **Session expired:** Follow the sign-in link and use the appropriate workspace PIN. Cached pages alone cannot read or update vehicle records without a valid session.
+
+The existing recovery workflow now validates the current application files. It no longer restores an older application shell after a Fees update, so future fee-control changes preserve the vehicle dashboard and standalone links. The existing Registration Progress and Fees scripts and loader are unchanged.

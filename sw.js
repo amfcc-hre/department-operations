@@ -1,8 +1,9 @@
-const CACHE='amfcc-department-operations-v26-it-registers';
+const CACHE='amfcc-department-operations-v27-vehicle-checkout';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
   './asset-register.css','./asset-register.js',
+  './vehicles.html','./vehicle-checkout.css','./vehicle-checkout.js','./vehicle-dashboard.js',
   './it-assets.html','./it-assets-page.js','./it-documents.html','./it-documents.js','./it-register.css','./it-register-session.js',
   './meal-checkin.html','./meal-checkin.css','./meal-checkin.js',
   './pod.html','./pod.css','./pod.js'
