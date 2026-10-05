@@ -12,8 +12,9 @@ window.APP_CONFIG = {
 
   script.addEventListener("load", function () {
     var feeScript = document.createElement("script");
-    feeScript.src = "fee_enrolment_controls.js?v=1";
+    feeScript.src = "fee_enrolment_controls.js?v=4-notice-history";
     feeScript.async = false;
     document.head.appendChild(feeScript);
   });
 })();
+
