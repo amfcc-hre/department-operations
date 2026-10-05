@@ -164,6 +164,7 @@
   function currentDepartmentId() { return state.session && state.session.department ? state.session.department.id : null; }
   function currentDepartmentSlug() { return state.session && state.session.department ? state.session.department.slug : ""; }
   function isDepartment() { return state.session && state.session.role === "department"; }
+  function isClassMonitor() { return isDepartment() && state.session.department && state.session.department.slug === "class-monitors"; }
   function isLeadership() { return state.session && state.session.role === "student_leadership"; }
   function isManagement() { return state.session && ["management", "administrator"].indexOf(state.session.role) >= 0; }
   function isConference() { return !!(state.mode && state.mode.conference_mode); }
@@ -389,6 +390,7 @@
     state.personLookupResolve=null; el("person-lookup-modal").hidden=true;
   }
   function workspaceDefaultView() {
+    if (isClassMonitor()) return "prayer-register";
     if (isKitchenWorkspace()) return "meal-service";
     if (isClinicWorkspace()) return "clinic-service";
     if (isAccommodationWorkspace()) return "accommodation-service";
@@ -476,6 +478,9 @@
     var setupCode = el("department-setup-code");
     var newPin = el("department-new-pin");
     var confirmPin = el("department-confirm-pin");
+    var monitorLogin = departmentLogin && department && department.slug === "class-monitors";
+    var pinLabel = currentPinField.querySelector('label');
+    if (pinLabel) pinLabel.textContent = monitorLogin ? "4-digit PIN for your year group" : "4-digit workspace PIN";
 
     el("department-login-field").hidden = !departmentLogin;
     el("login-department").required = departmentLogin;
@@ -598,10 +603,16 @@
         : "Purpose-built operations, reporting and support requests")
       : titleCase(state.session.role) + " workspace";
     applyRoleVisibility();
+    if (isClassMonitor()) el("workspace-subtitle").textContent = "Year " + state.session.class_year + " · 4AM prayer, Monday to Friday";
   }
 
   function applyRoleVisibility() {
     var role = state.session.role;
+    if (isClassMonitor()) {
+      all('#main-nav button, #main-nav a').forEach(function (node) { node.hidden = node.dataset.view !== 'prayer-register'; });
+      el('operating-mode-banner').hidden = true;
+      return;
+    }
     all("[data-roles]").forEach(function (node) {
       node.hidden = node.dataset.roles.split(",").indexOf(role) < 0;
     });
@@ -682,9 +693,10 @@
   }
 
   async function signOut(callServer) {
+    if (callServer !== false && window.AMFCCPrayerRegister && !window.AMFCCPrayerRegister.confirmLeave()) return;
     if (window.AMFCCAssetRegister) window.AMFCCAssetRegister.reset();
     if (callServer !== false && state.session && state.session.session_token) {
-      try { await rpc("ops_logout", { p_session_token: state.session.session_token }); } catch (error) { /* local logout still proceeds */ }
+      try { await rpc(isClassMonitor() ? "ops_class_monitor_logout" : "ops_logout", { p_session_token: state.session.session_token }); } catch (error) { /* local logout still proceeds */ }
     }
     state.session = null;
     state.pinSetupMode = false;
@@ -706,11 +718,19 @@
     state.adminOfficePassReview = null;
     state.adminOfficeShowPassArchive = false;
     sessionStorage.removeItem("amfcc_ops_session");
+    if (window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.reset();
     showLogin();
   }
 
   async function loadData(showMessage) {
     if (!state.session) return;
+    if (isClassMonitor()) {
+      state.data = {departments:state.catalog.departments||[]};
+      applyRoleVisibility();
+      if (!state.initialViewApplied) { state.initialViewApplied=true; switchView('prayer-register'); }
+      else if (window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.open();
+      return;
+    }
     var from = value("range-from") || today();
     state.mode = await rpc("system_mode_status");
     var data = await rpc("ops_bootstrap_v2", {
@@ -2628,6 +2648,7 @@
     var setupMap = {};
     (state.pinSetupOverview.setups || []).forEach(function (setup) { setupMap[setup.department_id] = setup; });
     el("department-access-list").innerHTML = departments.map(function (department) {
+      if (department.slug === 'class-monitors') return '<article class="access-card"><h3>Class Monitors</h3><p class="muted">Each year group has its own PIN. Changing a PIN ends existing sessions for that year.</p><form class="department-code-form" data-department="'+department.id+'"><label>Year group<select class="cm-pin-year"><option value="1">1st Years</option><option value="2">2nd Years</option><option value="3">3rd Years</option></select></label><label>New 4-digit PIN<input type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required autocomplete="new-password"></label><label>Recorded by<input class="code-actor" list="student-name-options" data-lookup="student" placeholder="Search exact student record" required></label><button class="button secondary" type="submit">Set year group PIN</button></form></article>';
       var setup = setupMap[department.id] || { setup_status: "not_issued" };
       var generated = state.generatedPinSetupCodes[department.id];
       var setupText = setup.setup_status === "active"
@@ -2694,10 +2715,12 @@
   }
 
   function switchView(view) {
+    if (isClassMonitor() && view !== 'prayer-register') return;
     if (view === "assets" && (!window.AMFCCAssetRegister || !window.AMFCCAssetRegister.allowed())) { toast("IT Department access is required.", true); return; }
     all(".view").forEach(function (section) { section.classList.toggle("active", section.id === "view-" + view); });
     all("#main-nav button").forEach(function (button) { button.classList.toggle("active", button.dataset.view === view); });
     if (view === "assets") window.AMFCCAssetRegister.open();
+    if (view === "prayer-register" && window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.open();
     if (view === "tools" && selectedToolsDepartmentId() && (!state.tools || state.tools.department_id !== selectedToolsDepartmentId())) {
       loadDepartmentTools(selectedToolsDepartmentId()).then(renderTools).catch(function (error) { toast(error.message, true); });
     }
@@ -3669,7 +3692,13 @@
           toast("One-time department setup code generated.");
         } else {
           var actor = requireLookup(form.querySelector(".code-actor"), "student");
-          var result = await rpc("ops_set_department_pin_v2", {
+          var yearField = form.querySelector('.cm-pin-year');
+          var result = yearField ? await rpc('ops_class_monitor_set_pin', {
+            p_session_token:state.session.session_token,
+            p_class_year:Number(yearField.value),
+            p_pin:form.querySelector('input[type="password"]').value,
+            p_actor_name:actor.full_name
+          }) : await rpc("ops_set_department_pin_v2", {
             p_session_token: state.session.session_token,
             p_department_id: form.dataset.department,
             p_pin: form.querySelector('input[type="password"]').value,
@@ -3734,6 +3763,7 @@
       auth: { persistSession: false, autoRefreshToken: false }
     });
     if (window.AMFCCAssetRegister) window.AMFCCAssetRegister.mount({ rpc: rpc, getSession: function () { return state.session; } });
+    if (window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.mount({ rpc: rpc, getSession: function () { return state.session; } });
     bindEvents();
     clearInterval(state.plannerTimer);
     state.plannerTimer=setInterval(refreshPlannerLive,30000);

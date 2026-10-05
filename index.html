@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="asset-register.css?v=1">
   <link rel="stylesheet" href="it-register.css?v=1">
   <link rel="stylesheet" href="vehicle-checkout.css?v=1">
+  <link rel="stylesheet" href="prayer-register.css?v=1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -94,6 +95,7 @@
       <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="accommodation-service" data-roles="department" data-accommodation-only hidden>Accommodation assignments</button>
       <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="prayer-register" data-roles="department,student_leadership,management,administrator" data-department-slug="class-monitors">4AM prayer register</button>
       <button type="button" data-view="duties" data-roles="department,student_leadership,management,administrator" data-department-slug="security">Duties</button>
       <button type="button" data-view="tasks" data-roles="department,student_leadership,management,administrator">Tasks</button>
       <button type="button" data-view="members" data-roles="department,student_leadership,management,administrator">Department members</button>
@@ -110,6 +112,23 @@
       <button type="button" data-view="access" data-roles="administrator">Department access</button>
     </nav>
 
+    <section id="view-prayer-register" class="view" aria-labelledby="prayer-heading">
+      <div class="view-heading"><div><p class="eyebrow">Class Monitors</p><h2 id="prayer-heading">4AM prayer register</h2><p id="prayer-help" class="muted">Prayer attendance, Monday to Friday.</p></div></div>
+      <p id="prayer-context" class="prayer-context"></p><p id="prayer-state" class="prayer-state"></p>
+      <div class="prayer-controls">
+        <label>Date<select id="prayer-date"></select></label>
+        <label>Year group<select id="prayer-year"><option value="1">1st Years</option><option value="2">2nd Years</option><option value="3">3rd Years</option></select></label>
+        <label class="prayer-search">Find a student<input id="prayer-search" type="search" placeholder="Name or registration number"></label>
+        <button id="prayer-refresh" class="button secondary" type="button">Refresh register</button>
+        <button id="prayer-export" class="button secondary" type="button">Export CSV</button>
+      </div>
+      <div id="prayer-summary" class="prayer-summary"></div>
+      <label id="prayer-actor-field">Monitor recording this register<input id="prayer-actor" maxlength="120" placeholder="Your name" autocomplete="name"></label>
+      <div class="prayer-actions"><button id="prayer-mark-present" class="button secondary" type="button" hidden>Mark unmarked on-campus students present</button><button id="prayer-save" class="button primary" type="button" hidden>Save register</button></div>
+      <div class="prayer-table-wrap"><table class="prayer-table"><thead><tr><th>Student</th><th>Registration</th><th>Status</th><th>Attendance</th></tr></thead><tbody id="prayer-rows"></tbody></table></div>
+      <p id="prayer-message" class="prayer-message" role="status" aria-live="polite"></p>
+      <section id="prayer-notes-section" class="prayer-notes-section" hidden><h3>Year group notes</h3><p class="muted">Saved for this date and visible only to Class Monitors for your year group.</p><label for="prayer-notes">Notes</label><textarea id="prayer-notes" maxlength="8000"></textarea><p id="prayer-notes-state" class="prayer-state"></p><button id="prayer-notes-save" class="button primary" type="button">Save notes</button></section>
+    </section>
     <section id="view-assets" class="view" aria-labelledby="asset-heading">
       <div class="view-heading">
         <div><p class="eyebrow">IT Department</p><h2 id="asset-heading">Asset register</h2><p class="muted">Find equipment and supplies, check stock and update quantities.</p></div>
@@ -984,7 +1003,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="shared_config.js?v=6-notice-history"></script>
   <script src="asset-register.js?v=1"></script>
-  <script src="operations.js?v=27"></script>
+  <script src="prayer-register.js?v=1"></script>
+  <script src="operations.js?v=28-class-monitors"></script>
   <script src="vehicle-dashboard.js?v=1"></script>
 </body>
 </html>
