@@ -1,7 +1,8 @@
-const CACHE='amfcc-department-operations-v27-vehicle-checkout';
+const CACHE='amfcc-department-operations-v28-fee-notice-history';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
+  './enrolment_tracking.js','./fee_enrolment_controls.js',
   './asset-register.css','./asset-register.js',
   './vehicles.html','./vehicle-checkout.css','./vehicle-checkout.js','./vehicle-dashboard.js',
   './it-assets.html','./it-assets-page.js','./it-documents.html','./it-documents.js','./it-register.css','./it-register-session.js',
@@ -22,3 +23,4 @@ self.addEventListener('fetch',event=>{
     return response;
   }).catch(()=>caches.match(event.request)));
 });
+

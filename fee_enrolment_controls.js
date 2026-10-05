@@ -6,6 +6,7 @@
   var selected = new Set();
   var mounted = false;
   var loading = false;
+  var sendingNotices = false;
 
   function session() {
     try { return JSON.parse(sessionStorage.getItem("amfcc_ops_session") || "null"); }
@@ -40,6 +41,27 @@
 
   function money(value) {
     return "USD " + Number(value || 0).toFixed(2);
+  }
+
+
+  function noticeWhen(value) {
+    if (!value) return 'Not yet';
+    var date = new Date(value);
+    return isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString('en-ZW', {timeZone:'Africa/Harare',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function hasSentNotice(row) {
+    return !!row.notice_last_sent_at || Number(row.notice_sent_count || 0)>0 || row.notice_last_delivery_status==='sent' || (row.notice_history || []).some(function (item) { return item.status==='sent'; });
+  }
+  function noticeStatus(row) {
+    var sent = hasSentNotice(row), status = row.notice_last_delivery_status;
+    if (status === 'queued') return sent ? 'Follow-up queued' : 'Notice queued';
+    if (status === 'sending') return sent ? 'Sending follow-up' : 'Sending notice';
+    if (status === 'failed') return sent ? 'Last follow-up failed' : 'Delivery failed';
+    return sent ? 'Notice sent' : 'Not sent';
+  }
+  function noticeCount(row) {
+    var count=Number(row.notice_sent_count || 0);
+    return count ? count+' notice'+(count===1?'':'s')+' sent' : hasSentNotice(row) ? 'Previously sent' : 'No notice sent yet';
   }
 
   function statusText(row) {
@@ -131,7 +153,10 @@
       ["Status", statusText(row)],
       ["Outstanding balance", money(row.outstanding_balance)],
       ["Registration email", row.student_email || "No registration email"],
-      ["Last delivery", row.notice_last_delivery_status || "Not sent"]
+      ["Latest delivery", noticeStatus(row)],
+      ["Notices sent", noticeCount(row)],
+      ["Last sent", noticeWhen(row.notice_last_sent_at)],
+      ["Last recipient", row.notice_last_recipient || "Not yet"]
     ].forEach(function (item) {
       var box = node("div");
       box.appendChild(node("strong", null, item[0]));
@@ -155,6 +180,18 @@
       ));
     }
 
+    if(row.notice_last_error) content.appendChild(node('p','notice bad','Latest delivery error: '+row.notice_last_error));
+    content.appendChild(node('h3',null,'Notice history'));
+    var history=row.notice_history||[];
+    if(!history.length) content.appendChild(node('p','fee-small','No delivery history recorded.'));
+    history.forEach(function(item){
+      var entry=node('div','fee-notice-text');
+      entry.appendChild(node('strong',null,({queued:'Queued',sending:'Sending',sent:'Sent',failed:'Failed'})[item.status]||item.status));
+      entry.appendChild(node('div','fee-small',noticeWhen(item.sent_at||item.created_at)+' · '+item.recipient_email));
+      if(item.last_error)entry.appendChild(node('div','fee-small',item.last_error));
+      content.appendChild(entry);
+    });
+    if(history.length>=20)content.appendChild(node('p','fee-small','Showing the latest 20 notice attempts.'));
     dialog.showModal();
   }
 
@@ -177,15 +214,15 @@
   }
 
   async function send(ids) {
+    if(sendingNotices)return;
     if (!ids || !ids.length) {
       message("Select at least one eligible student.", true);
       return;
     }
 
-    if (!window.confirm(
-      "Send the individual fee notice to " + ids.length + " selected student" +
-      (ids.length === 1 ? "" : "s") + "?"
-    )) return;
+    var recipients=(feeData.registrations||[]).filter(function(row){return ids.indexOf(row.registration_id)>=0;});
+    var followups=recipients.filter(hasSentNotice).length;
+    if(!window.confirm('Send '+ids.length+' fee notice'+(ids.length===1?'':'s')+' now?'+(followups?' '+followups+' will be follow-up notices.':'')+'\n\n'+recipients.map(function(row){return row.student_name+' ('+row.registration_number+') → '+row.student_email;}).join('\n')+'\n\nUse Fee information to review each notice before sending.'))return;
 
     var s = session();
     var c = client();
@@ -194,28 +231,16 @@
       return;
     }
 
-    message("Queueing fee notice" + (ids.length === 1 ? "" : "s") + "…", false);
-
-    var response = await c.rpc("ops_send_fee_notices", {
-      p_session_token: s.session_token,
-      p_registration_ids: ids
-    });
-
-    if (response.error || !response.data || response.data.status !== "success") {
-      message(
-        (response.error && response.error.message) ||
-        (response.data && response.data.message) ||
-        "Fee notices could not be queued.",
-        true
-      );
-      return;
-    }
-
-    if (Number(response.data.queued || 0) > 0) await drainEmailQueue();
-
-    selected.clear();
-    message(response.data.message || "Fee notices queued.", false);
-    await load();
+    sendingNotices=true;render();
+    message('Queueing fee notices…',false);
+    try{
+      var response=await c.rpc('ops_send_fee_notices',{p_session_token:s.session_token,p_registration_ids:ids});
+      if(response.error||!response.data||response.data.status!=='success')throw new Error((response.error&&response.error.message)||(response.data&&response.data.message)||'Fee notices could not be queued.');
+      if(Number(response.data.queued||0)>0)await drainEmailQueue();
+      selected.clear();await load();
+      message(response.data.message||'Fee notices queued. Check Notice status for delivery.',false);
+    }catch(error){message(error.message||'Fee notices could not be queued.',true);}
+    finally{sendingNotices=false;render();}
   }
 
   function visibleEligibleRows() {
@@ -292,10 +317,16 @@
 
       tr.appendChild(node("td", null, row.student_email || "No registration email"));
 
+      var deliveryCell=node('td');
+      deliveryCell.appendChild(node('strong',null,noticeStatus(row)));
+      deliveryCell.appendChild(node('div','fee-small',noticeCount(row)));
+      if(row.notice_last_sent_at)deliveryCell.appendChild(node('div','fee-small','Last sent: '+noticeWhen(row.notice_last_sent_at)));
+      else if(row.notice_last_queued_at)deliveryCell.appendChild(node('div','fee-small','Queued: '+noticeWhen(row.notice_last_queued_at)));
+      tr.appendChild(deliveryCell);
       var noticeCell = node("td");
       if (row.send_eligible) {
-        var sendButton = node("button", "button primary", "Send notice");
-        sendButton.type = "button";
+        var sendButton = node("button", "button primary", hasSentNotice(row)?"Send follow-up":"Send notice");
+        sendButton.type = "button";sendButton.disabled=sendingNotices;
         sendButton.addEventListener("click", function () {
           send([row.registration_id]);
         });
@@ -311,12 +342,13 @@
     if (!rows.length) {
       var empty = node("tr");
       var cell = node("td", "empty-state", "No students match this search.");
-      cell.colSpan = 6;
+      cell.colSpan = 7;
       empty.appendChild(cell);
       body.appendChild(empty);
     }
 
     syncSelectAll();
+    var sendSelected=document.getElementById("fee-send-selected");if(sendSelected)sendSelected.disabled=sendingNotices;
   }
 
   async function load() {
@@ -507,7 +539,7 @@
     toolbar.appendChild(selectLabel);
 
     var sendSelected = node("button", "button primary", "Send selected notices");
-    sendSelected.type = "button";
+    sendSelected.type = "button";sendSelected.id="fee-send-selected";
     sendSelected.addEventListener("click", function () {
       send(Array.from(selected));
     });
@@ -525,7 +557,7 @@
     var table = node("table", "service-table");
     var thead = node("thead");
     var header = node("tr");
-    ["Select", "Student", "Registration", "Fee information", "Registration email", "Notice"].forEach(function (label) {
+    ["Select", "Student", "Registration", "Fee information", "Registration email", "Notice status", "Action"].forEach(function (label) {
       header.appendChild(node("th", null, label));
     });
     thead.appendChild(header);
@@ -542,6 +574,7 @@
   }
 
   function start() {
+    setInterval(function(){var view=document.getElementById('view-enrolment'),pane=document.getElementById('enrolment-fees-pane');if(feeData&&!document.hidden&&selected.size===0&&!sendingNotices&&view&&view.classList.contains('active')&&pane&&!pane.hidden)load();},30000);
     var attempts = 0;
     var timer = setInterval(function () {
       attempts += 1;
@@ -565,3 +598,4 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
   else start();
 })();
+
