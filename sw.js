@@ -1,4 +1,4 @@
-const CACHE='amfcc-department-operations-v29-class-monitors';
+const CACHE='amfcc-department-operations-v30-registration-exemptions';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
@@ -24,4 +24,5 @@ self.addEventListener('fetch',event=>{
     return response;
   }).catch(()=>caches.match(event.request)));
 });
+
 

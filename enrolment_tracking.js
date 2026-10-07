@@ -137,7 +137,7 @@
 
   function progressText(row) {
     var student = row.student_submitted_at ? "Student ✓" : "Student —";
-    var admin = row.admin_office_complete ? "Admin Office ✓" : "Admin Office —";
+    var admin = row.admin_office_required === false ? "Admin Office: Not required" : row.admin_office_complete ? "Admin Office ✓" : "Admin Office —";
     var fees = row.fees_complete ? "Fees —" : "Fees —";
     var accommodation = row.accommodation_complete ? "Accommodation ✓" : "Accommodation —";
     return [student, admin, fees, accommodation].join(" · ");
@@ -194,7 +194,7 @@
     document.getElementById("enrolment-count").textContent = rows.length + " of " + allRows.length;
     document.getElementById("enrolment-rows").innerHTML = rows.map(function (row) {
       return '<tr>' +
-        '<td><strong>' + esc(row.student_name) + '</strong></td>' +
+        '<td><strong>' + esc(row.student_name) + '</strong>' + (row.registration_category === 'executive_missions' ? '<br><small>Executive / missions</small>' : '') + '</td>' +
         '<td>' + esc(row.registration_number) + '</td>' +
         '<td>' + esc(row.class_year ? row.class_year + (row.class_year === 1 ? "st" : row.class_year === 2 ? "nd" : "rd") + " Year" : "—") + '</td>' +
         '<td><span class="status-pill ' + statusClass(row) + '">' + esc(row.status_label || row.status) + '</span></td>' +
@@ -244,3 +244,4 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
   else start();
 })();
+

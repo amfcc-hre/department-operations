@@ -6,7 +6,7 @@ window.APP_CONFIG = {
 (function () {
   if (document.body && document.body.dataset.itRegister) return;
   var script = document.createElement("script");
-  script.src = "enrolment_tracking.js?v=2";
+  script.src = "enrolment_tracking.js?v=3-exemptions";
   script.async = false;
   document.head.appendChild(script);
 
@@ -17,4 +17,5 @@ window.APP_CONFIG = {
     document.head.appendChild(feeScript);
   });
 })();
+
 
