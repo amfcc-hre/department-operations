@@ -11,6 +11,7 @@
   <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="shared_ui.css">
   <link rel="stylesheet" href="operations.css?v=12">
+  <link rel="stylesheet" href="clinic-register.css?v=1">
   <link rel="stylesheet" href="asset-register.css?v=1">
   <link rel="stylesheet" href="it-register.css?v=1">
   <link rel="stylesheet" href="vehicle-checkout.css?v=1">
@@ -92,7 +93,7 @@
     <nav id="main-nav" class="tab-bar" aria-label="Workspace sections">
       <a class="button secondary" href="vehicles.html" data-vehicle-link hidden>Vehicle checkout</a>
       <button type="button" data-view="meal-service" data-roles="department" data-department-slug="kitchen">Meal service</button>
-      <button type="button" data-view="clinic-service" data-roles="department" data-department-slug="clinic">Clinic register</button>
+      <button type="button" data-view="clinic-service" data-roles="department,administrator" data-department-slug="clinic">Clinic register</button>
       <button type="button" data-view="accommodation-service" data-roles="department" data-accommodation-only hidden>Accommodation assignments</button>
       <button type="button" data-view="overview" class="active">Overview</button>
       <button type="button" data-view="prayer-register" data-roles="department,student_leadership,management,administrator" data-department-slug="class-monitors">4AM prayer register</button>
@@ -238,21 +239,7 @@
     </section>
 
     <section id="view-clinic-service" class="view" aria-labelledby="clinic-service-heading">
-      <div class="view-heading">
-        <div><p class="eyebrow">Clinic operations</p><h2 id="clinic-service-heading">Clinic register</h2><p class="muted">Manage bed-rest permissions and open the Clinic medication and materials tools from one protected workspace.</p></div>
-        <button id="clinic-refresh" class="button secondary" type="button">Refresh register</button>
-      </div>
-      <div class="two-column">
-        <article class="panel">
-          <div class="panel-heading"><div><h3>Find a student</h3><p>Search by name or registration number, then start or end bed rest.</p></div></div>
-          <label>Student search<input id="clinic-search" type="search" placeholder="Name or registration number" autocomplete="off"></label>
-          <div id="clinic-results" class="card-list empty-state">Start typing to search.</div>
-        </article>
-        <article class="panel">
-          <div class="panel-heading"><div><h3>Currently on bed rest</h3><p>Active Clinic permissions only.</p></div><span id="clinic-active-count" class="count-badge">0</span></div>
-          <div id="clinic-active" class="card-list empty-state">No active bed-rest records.</div>
-        </article>
-      </div>
+      <div id="clinic-register" class="panel"></div>
       <article class="panel department-action-panel">
         <div class="action-tile-grid">
           <button class="action-tile" type="button" data-open-view="tools"><strong>Medication and materials</strong><span>Track current stock, receipts, use and low-stock levels.</span></button>
@@ -1004,7 +991,8 @@
   <script src="shared_config.js?v=7-registration-exemptions"></script>
   <script src="asset-register.js?v=1"></script>
   <script src="prayer-register.js?v=1"></script>
-  <script src="operations.js?v=28-class-monitors"></script>
+  <script src="clinic-register.js?v=1"></script>
+  <script src="operations.js?v=29-clinic-statuses"></script>
   <script src="vehicle-dashboard.js?v=1"></script>
 </body>
 </html>

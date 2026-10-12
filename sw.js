@@ -1,7 +1,8 @@
-const CACHE='amfcc-department-operations-v30-registration-exemptions';
+const CACHE='amfcc-department-operations-v31-clinic-statuses';
 const CORE=[
   './','./index.html','./manifest.webmanifest',
   './assets_icon.svg','./shared_ui.css','./shared_config.js','./operations.css','./operations.js',
+  './clinic-register.js','./clinic-register.css','./clinic-guide.html',
   './enrolment_tracking.js','./fee_enrolment_controls.js',
   './prayer-register.js','./prayer-register.css',
   './asset-register.css','./asset-register.js',

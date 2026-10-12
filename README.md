@@ -156,16 +156,22 @@ Holiday Mode disables advance Meal Check-In but leaves Meal Collection available
 
 ## Clinic Operations
 
-Clinic opens directly to its protected register.
+Clinic opens directly to its protected register. The three active student statuses are **Monitoring**, **Bed Rest Allowed** and **Referring to MDH**.
 
-- Search students by name or registration number.
-- Start or end bed-rest permission.
-- View students currently on bed rest.
-- Track medication and material stock.
-- Record non-confidential Clinic activity totals.
-- Submit Clinic reports and request extra help when required.
+- Choose **Find a student**, search by name or registration, select the student and save a status, condition and condition summary.
+- Cards show the full condition summary without opening another screen.
+- Filter by status, condition, class year and text. Use a status total as a quick filter.
+- **Export filtered CSV** and **Print / Save PDF** export the records currently displayed.
+- **Edit status and summary** updates a record. Status changes retain the earlier record in **Closed records**.
+- **Close record** ends the active clinic status without deleting history.
+- The School Administration dashboard has a **Clinic register** tab with the same filters, summaries and exports. The administrator workspace in Department Operations also has this tab.
+- Clinic staff can update records. The administrator screens provide a viewing and export interface.
+- Student Leadership, Management and Class Monitors continue to see permitted bed-rest status only; they cannot read conditions or summaries from this register.
+- Existing bed-rest permissions and the legacy `set_bed_rest` API remain compatible. Only `Bed Rest Allowed` sets the downstream bed-rest flag.
+- Clinic medication, material stock and operational reports remain available alongside the register.
 
-Student Leadership cannot see confidential Clinic notes.
+Implementation: `clinic-register.js` and `clinic-register.css` contain the shared interface. `operations.js` connects the clinic session to `ops_clinic_service`. School Administration uses `admin_clinic_register` through `admin_admin.js` in the Student Services repository. The database migration is in `supabase/migrations/20261012193735_clinic_register_statuses_conditions_history.sql`.
+
 
 ## IT Department Operations
 

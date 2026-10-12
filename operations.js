@@ -40,7 +40,7 @@
     gatePassLink: null,
     periodPreview: null,
     toastTimer: null,
-    clinicTimer: null,
+    clinic: null,
     initialViewApplied: false,
     scanStartedAt: 0,
     scanLastAt: 0,
@@ -719,6 +719,7 @@
     state.adminOfficeShowPassArchive = false;
     sessionStorage.removeItem("amfcc_ops_session");
     if (window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.reset();
+    if (state.clinic) state.clinic.reset();
     showLogin();
   }
 
@@ -1407,7 +1408,7 @@
       "media": { eyebrow:"Media operations",title:"Content, events and equipment",description:"Plan coverage and publications, manage media equipment, and record production and delivery.",plan:"Plan media work",planTypeLabel:"Media plan type",planTypePlaceholder:"Coverage, production, publication or event",planTitleLabel:"Event, story or production",stock:"Register media equipment or supply",stockNameLabel:"Equipment, accessory or supply",stockCategoryLabel:"Media category",stockCategoryPlaceholder:"Enter the media category",stockUnitPlaceholder:"device, cable, battery, item",log:"Record production or equipment activity",logTypeLabel:"Media record type",logTypePlaceholder:"Capture, edit, publish, handover or fault",logTitleLabel:"Event, production or equipment",quantityLabel:"Items or outputs",nav:{tasks:"Media assignments",tools:"Content and equipment"},workflow:[["Content calendar","Plan events, stories and publication work."],["Equipment register","Track cameras, audio, accessories and supplies."],["Production record","Record capture, editing, delivery and faults."]]},
       "chairs-upholstery": { eyebrow:"Upholstery operations",title:"Furniture jobs and materials",description:"Plan chair and upholstery jobs, track fabric and components, and record completed items and repairs.",plan:"Plan furniture and upholstery jobs",planTypeLabel:"Job type",planTypePlaceholder:"Repair, upholstery, restoration or production",planTitleLabel:"Furniture item or batch",stock:"Add upholstery material or tool",stockNameLabel:"Fabric, component or tool",stockCategoryLabel:"Material category",stockCategoryPlaceholder:"Enter the upholstery category",stockUnitPlaceholder:"metre, sheet, item, box",log:"Record furniture job progress",logTypeLabel:"Upholstery record type",logTypePlaceholder:"Strip, repair, cover, complete, usage or issue",logTitleLabel:"Item, batch or job",quantityLabel:"Items or material",nav:{tasks:"Furniture jobs",tools:"Jobs and materials"},workflow:[["Job queue","Plan repairs, restoration and new work."],["Materials","Track fabric, foam, components and tools."],["Finished work","Record completed items, usage and issues."]]},
       "kitchen": { eyebrow:"Kitchen operations",title:"Menus, ingredients and food usage",description:"Plan meals, manage ingredients, record usage and wastage, and keep meal service reporting together.",plan:"Plan meals for a day or week",planTypeLabel:"Meal plan type",planTypePlaceholder:"Daily menu, weekly menu, preparation or special service",planTitleLabel:"Menu or service",planTitlePlaceholder:"Describe the meal plan",stock:"Add food or ingredient",stockNameLabel:"Food or ingredient",stockCategoryLabel:"Food category",stockCategoryPlaceholder:"Enter the category used by Kitchen",stockUnitPlaceholder:"kg, litre, packet, tray, item",log:"Record food usage or service activity",logTypeLabel:"Kitchen record type",logTypePlaceholder:"Preparation, usage, wastage, service or issue",logTitleLabel:"Meal, ingredient or event",quantityLabel:"Meals or quantity",nav:{tasks:"Occasional work",requests:"Request extra help","daily-report":"Daily service report","period-report":"Service summaries",tools:"Menus and food stock",transfers:"Food transfers"},workflow:[["Meal planning","Plan daily or weekly menus and preparation."],["Ingredients and usage","Track food received, used, wasted and remaining."],["Meal service","Use the dedicated scanner page for daily check-ins."]]},
-      "clinic": { eyebrow:"Clinic operations",title:"Medication, materials and clinic work",description:"Manage Clinic supplies, operational plans and activity records alongside the protected bed-rest register.",plan:"Plan clinic work",planTypeLabel:"Clinic plan type",planTypePlaceholder:"Routine, stock review, follow-up or health activity",planTitleLabel:"Clinic work item",stock:"Add medication or material",stockNameLabel:"Medication or material",stockCategoryLabel:"Clinic category",stockCategoryPlaceholder:"Enter the Clinic category",stockUnitPlaceholder:"tablet, bottle, packet, box, item",log:"Record clinic activity",logTypeLabel:"Clinic record type",logTypePlaceholder:"Consultation total, stock use, follow-up or incident",logTitleLabel:"Activity or event",quantityLabel:"People or items",nav:{tasks:"Clinic actions",requests:"Request support","daily-report":"Clinic daily report","period-report":"Clinic summaries",tools:"Medication and materials",transfers:"Clinic transfers"},workflow:[["Clinic register","Manage bed-rest permissions in the protected Clinic screen."],["Medication stock","Track medication and material quantities and low levels."],["Clinic operations","Plan work and record non-confidential activity totals."]]},
+      "clinic": { eyebrow:"Clinic operations",title:"Medication, materials and clinic work",description:"Manage Clinic supplies, operational plans and activity records alongside the protected bed-rest register.",plan:"Plan clinic work",planTypeLabel:"Clinic plan type",planTypePlaceholder:"Routine, stock review, follow-up or health activity",planTitleLabel:"Clinic work item",stock:"Add medication or material",stockNameLabel:"Medication or material",stockCategoryLabel:"Clinic category",stockCategoryPlaceholder:"Enter the Clinic category",stockUnitPlaceholder:"tablet, bottle, packet, box, item",log:"Record clinic activity",logTypeLabel:"Clinic record type",logTypePlaceholder:"Consultation total, stock use, follow-up or incident",logTitleLabel:"Activity or event",quantityLabel:"People or items",nav:{tasks:"Clinic actions",requests:"Request support","daily-report":"Clinic daily report","period-report":"Clinic summaries",tools:"Medication and materials",transfers:"Clinic transfers"},workflow:[["Clinic register","Manage student statuses, conditions and summaries in the protected Clinic register."],["Medication stock","Track medication and material quantities and low levels."],["Clinic operations","Plan work and record non-confidential activity totals."]]},
       "bakery": { eyebrow:"Bakery operations",title:"Production batches and ingredients",description:"Plan bakery production, manage ingredients and packaging, and record output, usage and wastage.",plan:"Plan bakery production",planTypeLabel:"Production plan type",planTypePlaceholder:"Daily bake, special order, preparation or maintenance",planTitleLabel:"Product or batch",stock:"Add ingredient or bakery supply",stockNameLabel:"Ingredient, packaging or supply",stockCategoryLabel:"Bakery category",stockCategoryPlaceholder:"Enter the bakery category",stockUnitPlaceholder:"kg, litre, packet, tray, item",log:"Record production or wastage",logTypeLabel:"Bakery record type",logTypePlaceholder:"Batch, output, usage, wastage or issue",logTitleLabel:"Product, batch or event",quantityLabel:"Items or weight",nav:{tasks:"Production work",tools:"Batches and ingredients"},workflow:[["Production plan","Plan products, batches and preparation."],["Ingredients","Track ingredients, packaging and supplies."],["Output and wastage","Record finished items, use, loss and issues."]]},
       "tuckshop": { eyebrow:"Tuckshop operations",title:"Stock, sales and service",description:"Plan tuckshop service, track stock movements, and record sales totals, losses and restocking needs.",plan:"Plan tuckshop service",planTypeLabel:"Service plan type",planTypePlaceholder:"Restock, promotion, service or stocktake",planTitleLabel:"Service or stock plan",stock:"Add sale item or supply",stockNameLabel:"Product or supply",stockCategoryLabel:"Product category",stockCategoryPlaceholder:"Enter the tuckshop category",stockUnitPlaceholder:"item, packet, bottle, box",log:"Record sales or stock activity",logTypeLabel:"Tuckshop record type",logTypePlaceholder:"Sales, stocktake, expiry, loss or issue",logTitleLabel:"Product group or event",quantityLabel:"Items or value",nav:{tasks:"Tuckshop work",tools:"Stock and sales records"},workflow:[["Service planning","Plan restocking, stocktakes and service work."],["Sale stock","Track products received, sold, lost and remaining."],["Daily record","Record totals, expiries, issues and follow-up."]]},
       "fisheries": { eyebrow:"Fisheries operations",title:"Ponds, feed and harvests",description:"Plan pond work, manage feed and supplies, and record water checks, stock, growth, harvests and losses.",plan:"Plan fisheries work",planTypeLabel:"Pond plan type",planTypePlaceholder:"Feeding, water, stocking, harvest or maintenance",planTitleLabel:"Pond or work",stock:"Add feed or fisheries supply",stockNameLabel:"Feed, treatment or supply",stockCategoryLabel:"Fisheries category",stockCategoryPlaceholder:"Enter the fisheries category",stockUnitPlaceholder:"kg, bag, litre, item",log:"Record pond or harvest activity",logTypeLabel:"Fisheries record type",logTypePlaceholder:"Feed, water check, stocking, growth, harvest or loss",logTitleLabel:"Pond or event",quantityLabel:"Fish or weight",nav:{tasks:"Pond work",requests:"Request pond support",tools:"Ponds, feed and harvests"},workflow:[["Pond rounds","Plan feeding, checks and maintenance."],["Feed and supplies","Track feed, treatments and equipment."],["Stock and harvest","Record growth, mortality, harvests and transfers."]]},
@@ -1817,14 +1818,7 @@
   }
 
   async function refreshClinic() {
-    var result = await rpc("ops_clinic_service", { p_session_token: state.session.session_token, p_action: "active", p_payload: {} });
-    if (result.status !== "success") throw new Error(result.message || "Clinic records could not be loaded.");
-    var rows = result.students || [];
-    el("clinic-active-count").textContent = rows.length;
-    el("clinic-active").classList.toggle("empty-state", !rows.length);
-    el("clinic-active").innerHTML = rows.length ? rows.map(function (student) {
-      return '<article class="data-card"><div class="card-top"><div><h3>' + escapeHtml(student.student_name) + '</h3><p>' + escapeHtml(student.registration_number) + '</p></div><button class="button quiet clinic-bed-rest" data-action="clear" data-registration="' + escapeHtml(student.registration_number) + '">End bed rest</button></div>' + (student.notes ? '<p>' + escapeHtml(student.notes) + '</p>' : '') + '</article>';
-    }).join("") : "No students are currently on bed rest.";
+    if (state.clinic) await state.clinic.refresh();
   }
 
   function downloadCsv(rows, filename) {
@@ -3593,21 +3587,6 @@
       el("kitchen-registration").value += event.key;
       event.preventDefault();
     });
-    el("clinic-refresh").addEventListener("click", function () { refreshClinic().catch(function(error){toast(error.message,true);}); });
-    el("clinic-search").addEventListener("input", function () {
-      clearTimeout(state.clinicTimer); state.clinicTimer=setTimeout(async function(){
-        var query=value("clinic-search"); if(query.length<2){el("clinic-results").innerHTML="Enter at least two letters or digits.";return;}
-        try { var result=await rpc("ops_clinic_service",{p_session_token:state.session.session_token,p_action:"search",p_payload:{query:query}}); if(result.status!=="success")throw new Error(result.message||"Search failed."); var rows=result.students||[]; el("clinic-results").classList.toggle("empty-state",!rows.length); el("clinic-results").innerHTML=rows.length?rows.map(function(student){return '<article class="data-card"><div class="card-top"><div><h3>'+escapeHtml(student.student_name)+'</h3><p>'+escapeHtml(student.registration_number+" · "+titleCase(student.campus_status))+"</p></div><button class=\"button "+(student.on_bed_rest?"quiet":"primary")+" clinic-bed-rest\" data-action=\""+(student.on_bed_rest?"clear":"start")+"\" data-registration=\""+escapeHtml(student.registration_number)+"\">"+(student.on_bed_rest?"End bed rest":"Start bed rest")+"</button></div></article>";}).join(""):"No matching students."; }
-        catch(error){toast(error.message,true);}
-      },250);
-    });
-    function clinicAction(event) {
-      var button=event.target.closest(".clinic-bed-rest"); if(!button)return;
-      var notes=button.dataset.action==="start"?window.prompt("Clinic notes (optional):",""):"";
-      rpc("ops_clinic_service",{p_session_token:state.session.session_token,p_action:"set_bed_rest",p_payload:{registration_number:button.dataset.registration,bed_rest_action:button.dataset.action,notes:notes||""}}).then(function(result){if(result.status!=="success")throw new Error(result.message||"Clinic record could not be saved."); return refreshClinic();}).then(function(){toast("Clinic record updated.");}).catch(function(error){toast(error.message,true);});
-    }
-    el("clinic-results").addEventListener("click",clinicAction);
-    el("clinic-active").addEventListener("click",clinicAction);
 
     el("accommodation-refresh").addEventListener("click", async function () {
       setBusy(this, true, "Refreshing...");
@@ -3764,6 +3743,15 @@
     });
     if (window.AMFCCAssetRegister) window.AMFCCAssetRegister.mount({ rpc: rpc, getSession: function () { return state.session; } });
     if (window.AMFCCPrayerRegister) window.AMFCCPrayerRegister.mount({ rpc: rpc, getSession: function () { return state.session; } });
+    if (window.AMFCCClinicRegister) state.clinic = window.AMFCCClinicRegister.mount({
+      root: el("clinic-register"),
+      getAuthKey: function () { return state.session && state.session.session_token; },
+      editable: isClinicWorkspace,
+      rpc: function (action, payload) {
+        return rpc("ops_clinic_service", { p_session_token: state.session.session_token, p_action: action, p_payload: payload });
+      },
+      onChange: function () { state.studentServices = null; }
+    });
     bindEvents();
     clearInterval(state.plannerTimer);
     state.plannerTimer=setInterval(refreshPlannerLive,30000);
