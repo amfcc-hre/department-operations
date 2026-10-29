@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123d2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>AMFCC Bakery</title>
+  <link rel="icon" href="assets_icon.svg" type="image/svg+xml">
+  <style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#173c2b;background:#eff5ef}
+    *{box-sizing:border-box}body{margin:0}main{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px}
+    section{width:min(440px,100%);background:#fff;border-radius:18px;padding:27px;box-shadow:0 8px 35px #173c2b1a}
+    h1{font-size:25px;margin:0 0 10px}p{line-height:1.5;margin:8px 0 16px}
+    label{display:block;margin:14px 0 6px;font-weight:600}input{font-size:20px;width:100%;padding:12px;border:1px solid #9aafa1;border-radius:8px}
+    button{border:0;border-radius:10px;background:#123d2b;color:white;padding:13px 16px;font-size:16px;width:100%;font-weight:600}
+    button:disabled{opacity:.55}.muted{color:#53645a}.error{color:#a22d2d}
+    #workspace{border:0;display:block;width:100%;height:100dvh;height:100vh;background:#fff}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="shared_config.js?v=7-registration-exemptions"></script>
+</head>
+<body>
+  <main id="status-view">
+    <section>
+      <h1>AMFCC Bakery</h1>
+      <p class="muted" id="message" role="status">Checking this iPad…</p>
+      <form id="activate-form" hidden>
+        <label for="activation-pin">One-time activation PIN</label>
+        <input id="activation-pin" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="off" required>
+        <p class="muted">You only need this PIN once on this iPad. Ask IT if this device has not been enrolled.</p>
+        <button id="activate-button" type="submit">Activate Bakery iPad</button>
+      </form>
+      <button id="retry-button" type="button" hidden>Retry connection</button>
+    </section>
+  </main>
+  <iframe id="workspace" title="Bakery Department" src="about:blank" hidden></iframe>
+  <script>
+  (function(){
+    'use strict';
+    var STORAGE_KEY='amfcc_bakery_trusted_device_v1';
+    var SESSION_KEY='amfcc_ops_session';
+    var iframe=document.getElementById('workspace');
+    var view=document.getElementById('status-view');
+    var status=document.getElementById('message');
+    var form=document.getElementById('activate-form');
+    var retry=document.getElementById('retry-button');
+    var pinInput=document.getElementById('activation-pin');
+    var lastActivity=Date.now();
+    var client=null;
+    var refreshing=false;
+    var sessionExpiry=0;
+    var setup=(new URLSearchParams(window.location.search)).get('setup') || '';
+
+    function show(message,error){
+      status.textContent=message;
+      status.className=error?'error':'muted';
+      view.hidden=false;
+      iframe.hidden=true;
+    }
+    function randomKey(){
+      if(!window.crypto || !window.crypto.getRandomValues) throw new Error('This browser cannot securely enrol devices.');
+      var bytes=new Uint8Array(32);
+      window.crypto.getRandomValues(bytes);
+      return Array.prototype.map.call(bytes,function(n){return n.toString(16).padStart(2,'0');}).join('');
+    }
+    async function rpc(name,args){
+      var response=await client.rpc(name,args);
+      if(response.error) throw new Error(response.error.message || 'Service unavailable.');
+      return response.data || {};
+    }
+    function recordActivity(){lastActivity=Date.now();}
+    function watchIframe(){
+      try{
+        var w=iframe.contentWindow;
+        if(w && w.document){
+          ['touchstart','pointerdown','keydown','input'].forEach(function(eventName){w.document.addEventListener(eventName,recordActivity,{passive:true});});
+        }
+      }catch(e){ /* Navigation to a separate origin is not supported by the kiosk. */ }
+    }
+    function openWorkspace(session,forceReload){
+      sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
+      sessionExpiry=new Date(session.expires_at).getTime();
+      view.hidden=true;
+      iframe.hidden=false;
+      if(forceReload || iframe.getAttribute('src')==='about:blank'){
+        iframe.src='index.html';
+      }
+    }
+    async function signIn(forceReload){
+      var key=localStorage.getItem(STORAGE_KEY);
+      if(!key) throw new Error('This iPad has not been activated.');
+      var session=await rpc('ops_bakery_kiosk_login',{p_device_key:key});
+      if(session.status!=='success'){
+        // Do not silently erase an enrolled device key on intermittent errors.
+        throw new Error(session.message || 'Device access has been denied.');
+      }
+      openWorkspace(session,forceReload);
+    }
+    async function start(){
+      try{
+        if(!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY || !window.supabase)
+          throw new Error('The Bakery site configuration has not loaded.');
+        client=window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL,window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY,
+          {auth:{persistSession:false,autoRefreshToken:false}});
+        var key=localStorage.getItem(STORAGE_KEY);
+        if(key){
+          show('Opening Bakery…',false);
+          await signIn(true);
+          history.replaceState({},document.title,location.pathname);
+          return;
+        }
+        if(!/^[a-f0-9]{64}$/.test(setup)){
+          show('This iPad needs its one-time activation invitation from AMFCC IT.',true);
+          return;
+        }
+        show('Enter the one-time activation PIN supplied by AMFCC IT.',false);
+        form.hidden=false;
+        pinInput.focus();
+      }catch(e){show(e.message || 'Unable to connect to Bakery.',true);retry.hidden=false;}
+    }
+    form.addEventListener('submit',async function(event){
+      event.preventDefault();
+      var button=document.getElementById('activate-button');
+      button.disabled=true;
+      show('Activating this iPad…',false);
+      form.hidden=false;
+      try{
+        var key=randomKey();
+        var response=await rpc('ops_bakery_kiosk_activate',{
+          p_invitation:setup,p_activation_pin:pinInput.value,p_device_key:key
+        });
+        if(response.status!=='success') throw new Error(response.message || 'Activation failed.');
+        localStorage.setItem(STORAGE_KEY,key);
+        pinInput.value='';
+        setup='';
+        history.replaceState({},document.title,location.pathname);
+        await signIn(true);
+      }catch(e){show(e.message || 'Activation failed.',true);if(!localStorage.getItem(STORAGE_KEY))form.hidden=false;else retry.hidden=false;}
+      finally{button.disabled=false;}
+    });
+    retry.addEventListener('click',function(){retry.hidden=true;start();});
+    iframe.addEventListener('load',watchIframe);
+    window.addEventListener('online',function(){ if(!view.hidden) start(); });
+    document.addEventListener('touchstart',recordActivity,{passive:true});
+    document.addEventListener('pointerdown',recordActivity,{passive:true});
+    document.addEventListener('keydown',recordActivity);
+
+    // Refresh the normal department session *before* its expiry, only after staff
+    // have been idle for at least five minutes. A reload preserves trusted-device
+    // activation but may reset unsaved form edits, so it is never forced during use.
+    setInterval(async function(){
+      if(refreshing || !sessionExpiry || Date.now()<sessionExpiry-90*60*1000) return;
+      if(Date.now()-lastActivity<5*60*1000) return;
+      refreshing=true;
+      try{await signIn(true);}catch(e){
+        if(Date.now()>sessionExpiry){show('Connection interrupted. Reconnect to Wi-Fi and retry.',true);retry.hidden=false;}
+      }finally{refreshing=false;}
+    },60*1000);
+    start();
+  })();
+  </script>
+</body>
+</html>
